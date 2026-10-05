@@ -109,6 +109,16 @@ body {
 .toast.show { animation: toastIn 0.25s ease-out; }
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 #roomChip { background: var(--ink); color: var(--cream); }
+#carChip { display: flex; align-items: center; gap: 8px; }
+.bar.car { width: 80px; height: 12px; }
+.bar.car i { background: #2a73b8; transform-origin: left; }
+#carPad {
+  position: fixed; z-index: 2; right: calc(var(--safe-r) + 40px); bottom: calc(var(--safe-b) + 176px);
+  width: 112px; height: 64px; border-radius: 20px; background: #2a73b8; color: var(--cream); font-size: 28px;
+}
+@media (max-height: 560px) { #carPad { bottom: calc(var(--safe-b) + 146px); width: 96px; height: 54px; font-size: 24px; } }
+#jumpPad span, #tosPad span { pointer-events: none; }
+#tosPad.small { font-size: 24px; }
 #roomChip small { opacity: 0.85; }
 .flash { position: fixed; inset: 0; z-index: 2; pointer-events: none; background: #d6402b; opacity: 0; transition: opacity 0.35s; }
 
@@ -175,6 +185,7 @@ body {
     <div class="hud-row">
       <div class="chip"><small>Puan</small><span id="score">0</span></div>
       <div class="chip" id="mult" hidden>x2</div>
+      <div class="chip" id="carChip" hidden><small>km/sa</small><span id="carSpeed">0</span><div class="bar car"><i id="carHp"></i></div></div>
       <div class="chip" id="roomChip" hidden><small id="roomName">Dükkân</small><span id="roomProg">0/0</span></div>
     </div>
     <div class="hud-row">
@@ -192,9 +203,10 @@ body {
 </div>
 
 <div class="joy idle" id="joy" hidden><span id="knob"></span></div>
+<button class="pad" id="carPad" aria-label="Arabaya bin" hidden>BİN</button>
 <div class="pads" id="pads" hidden>
-  <button class="pad" id="jumpPad" aria-label="Zıpla">ZIPLA</button>
-  <button class="pad" id="tosPad" aria-label="Tosla">TOS<svg viewBox="0 0 100 100" aria-hidden="true"><circle id="tosRing" cx="50" cy="50" r="46" pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="0"></circle></svg></button>
+  <button class="pad" id="jumpPad" aria-label="Zıpla"><span id="jumpLabel">ZIPLA</span></button>
+  <button class="pad" id="tosPad" aria-label="Tosla"><span id="tosLabel">TOS</span><svg viewBox="0 0 100 100" aria-hidden="true"><circle id="tosRing" cx="50" cy="50" r="46" pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="0"></circle></svg></button>
 </div>
 
 <div class="overlay" id="loading"><div class="card"><div class="loading" id="loadingText">Şehir yükleniyor…</div><div class="bar load"><i id="loadBar"></i></div></div></div>
@@ -222,6 +234,7 @@ body {
       <div class="rule"><b>ZIPLA</b><span>Çöp kutularının, babaların ve bariyerlerin üstünden atla.</span></div>
       <div class="rule"><b>Puan</b><span>Yaya 10, koşucu 20, bekçi 40. Araba 25, taksi 30, kamyon 45, otobüs 60. Art arda toslarsan kombo x5'e kadar çıkar.</span></div>
       <div class="rule"><b>Tehlike</b><span>Hareket eden araç çarparsa can gider. Bekçiler kovalar ve yakalarsa can götürür; onlara iki kez toslamak gerekir. Sokak köpekleri havlayıp seni yavaşlatır.</span></div>
+      <div class="rule"><b>Araba</b><span>Duran ya da yavaşlamış bir arabanın yanına git, BİN tuşuna bas. Joystick gaz ve direksiyon; FREN, KORNA ve İN tuşları var. Arabadayken bekçiler ve köpekler seni yakalayamaz. Çok çarparsan araba hurdaya döner.</span></div>
       <div class="rule"><b>Kapılar</b><span>Binaların kapısına tosla. Cam kapı tek darbede, tahta kapı iki darbede kırılır. Kırık kapıdan koşarak içeri gir, çıkmak için kapıya geri koş.</span></div>
       <div class="rule"><b>İçeride</b><span>Rafları devir, aynaları ve camları kır, masaları uçur, televizyonu patlat, ekmek ve simit ye, esnafı kovala. Her şeyi dağıtırsan +100. Biraz sonra bekçi gelir!</span></div>
       <div class="rule"><b>Enerji</b><span>Koştukça azalır. Toslamak ve simit yemek doldurur. Kırmızı elma 1 can verir.</span></div>

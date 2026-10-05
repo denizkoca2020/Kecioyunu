@@ -25,6 +25,14 @@ iPad için 3B sonsuz koşu oyunu. Keçi şehre iniyor: caddelerde istediğin yö
 - Her yeni oyun şehrin rastgele bir yerinde başlar: saat kuleli bir meydanda, bir parkta ya da bir caddede. Başlangıçta semt adı, yer ve saat yazar (ör. "Kadıköy · Park · Sabah").
 - Günün saati de rastgeledir: sabah, öğle ya da gün batımı. Gökyüzü, güneş rengi, gölgeler ve sis buna göre değişir.
 
+## Araba kullanma
+
+- Duran ya da yavaşlamış bir aracın (araba, taksi, otobüs, kamyon) yanına git: **BİN** tuşu çıkar (klavyede `E`). Şoför arabadan fırlayıp kaçar, keçi direksiyona geçer (+20).
+- Joystick ileri: gaz, geri: fren / geri vites, sağ-sol: direksiyon. **FREN** el freni (klavyede `Boşluk`), **KORNA** yayaları ve güvercinleri kaçırır (`J`), **İN** arabadan iner (`E`).
+- Arabadayken bekçiler ve köpekler seni yakalayamaz. Bekçi kovalarken arabaya binersen +30 kaçış bonusu.
+- Hızla çarptığın araçlar savrulur (puan), yayalar havaya uçar. Duvara ve araçlara çarpınca araba hasar alır; hasar artınca kaputtan duman çıkar, hurdaya dönünce keçi dışarı atlar.
+- İndiğin araba olduğu yerde kalır; istersen tekrar binebilirsin.
+
 ## Kapılar ve iç mekânlar
 
 - Her binanın sokağa bakan bir kapısı var (mini haritada kırmızı nokta). Dükkânlarda cam kapı, apartmanlarda tahta kapı.

@@ -1818,6 +1818,7 @@
     for (const s of g.fx) scene.remove(s.mesh);
   }
   function newGame() {
+    if (g && g.driving) { scene.add(goat.root); goat.root.scale.setScalar(1); shadowBlob.visible = true; g.driving = null; }
     clearDynamic();
     if (g && g.inside) { iscene.remove(g.inside.group); scene.add(goat.root, shadowBlob); }
     if (ui.room) ui.room.hidden = true;
@@ -1826,7 +1827,7 @@
     const st = pickStart();
     g = {
       t: 0, score: 0, lives: 3, energy: 100, combo: 0, comboT: 0, hits: 0, carHits: 0, dist: 0, inv: 0, shake: 0,
-      inside: null, street: null, pendingEnter: null, doorHint: false, enterHint: false, insideCount: 0,
+      inside: null, street: null, pendingEnter: null, driving: null, nearCar: null, handbrake: false, hornT: 0, ejectT: 0, carHint: false, driveHint: false, doorHint: false, enterHint: false, insideCount: 0,
       startInfo: st, goat: { x: st.x, z: st.z, y: CURB, vy: 0, yaw: st.yaw, speed: 0, dashT: 0, cd: 0, stun: 0, phase: 0, jumps: 0, slow: 0 },
       people: [], vehicles: [], animals: [], pickups: [], birds: [], fx: [], spawnT: 0, honkT: 0,
     };
@@ -2046,6 +2047,155 @@
     popText(x, y, z, "+" + pts, "#d6402b", 40);
     popText(x, y + 0.9, z, word, "#2b1d14", 30);
   }
+
+  // ================= Araba kullanma =================
+  const VEH_DRIVE = {
+    sedan: { max: 24, acc: 9, brake: 20, turn: 1.9, hp: 100, seat: [0.36, 0.1, -0.2, 0.6] },
+    hatch: { max: 22, acc: 10, brake: 20, turn: 2.1, hp: 100, seat: [0.36, 0.1, -0.35, 0.6] },
+    taxi: { max: 24, acc: 9, brake: 20, turn: 1.9, hp: 100, seat: [0.36, 0.1, -0.2, 0.6] },
+    bus: { max: 15, acc: 5, brake: 12, turn: 1.1, hp: 170, seat: [0.7, 0.75, 4.6, 0.8] },
+    truck: { max: 17, acc: 6, brake: 14, turn: 1.3, hp: 150, seat: [0.45, 1.05, 1.9, 0.75] },
+  };
+  function carLocal(v, x, z) { // dünya noktası -> araç yerel (ileri, sol)
+    const c = Math.cos(v.yaw + (v.yawOff || 0)), s2 = Math.sin(v.yaw + (v.yawOff || 0)), rx = x - v.x, rz = z - v.z;
+    return [rx * s2 + rz * c, rx * c - rz * s2];
+  }
+  function nearCarCheck(go) {
+    let best = null, bd = 1.4;
+    if (!g.inside) for (const v of g.vehicles) {
+      if (v.dead || v.state === "player") continue;
+      if (Math.abs(v.speed) > 3 && v.state !== "wreck") continue;
+      const [la, ll] = carLocal(v, go.x, go.z);
+      const dist = Math.hypot(Math.max(0, Math.abs(la) - v.L / 2), Math.max(0, Math.abs(ll) - v.W / 2));
+      if (dist < bd) { bd = dist; best = v; }
+    }
+    g.nearCar = best;
+    ui.carPad.hidden = !best;
+    if (best && !g.carHint) { g.carHint = true; toast(isTouch ? "Arabaya binmek için BİN tuşuna bas!" : "Arabaya binmek için E tuşuna bas!"); }
+  }
+  function setDriveUi(on) {
+    $("tosLabel").textContent = on ? "KORNA" : "TOS"; $("tosPad").classList.toggle("small", on);
+    $("jumpLabel").textContent = on ? "FREN" : "ZIPLA";
+    ui.carPad.textContent = on ? "İN" : "BİN";
+    ui.carPad.hidden = !on;
+    ui.carChip.hidden = !on;
+  }
+  function boardCar(v) {
+    if (g.driving || g.inside) return;
+    const go = g.goat, spec = VEH_DRIVE[v.kind];
+    v.yaw += v.yawOff || 0; v.yawOff = 0; v.latOff = 0; v.latPush = 0; v.hop = 0;
+    v.state = "player"; v.free = true; v.axis = "free"; v.speed = 0;
+    if (v.hp === undefined) v.hp = spec.hp;
+    g.driving = v; g.nearCar = null; g.handbrake = false;
+    // şoför kapıdan fırlar ve kaçar
+    if (!v.ownerless) {
+      v.ownerless = true;
+      const lx = Math.cos(v.yaw), lz = -Math.sin(v.yaw);
+      spawnPersonAt("yaya", v.x + lx * (v.W / 2 + 0.8), v.z + lz * (v.W / 2 + 0.8));
+      popText(v.x, 2.6, v.z, "Şoför kaçtı!", "#2b1d14", 28);
+    }
+    // bekçiden kaçış
+    const chased = g.people.some((p) => p.kind === "bekci" && !p.flying && Math.hypot(p.x - go.x, p.z - go.z) < 25);
+    if (chased) { g.score += 30; popText(v.x, 3.4, v.z, "Kaçış! +30", "#d6402b", 34); }
+    g.score += 20; popText(v.x, 3.0, v.z, "Araba senin! +20", "#d6402b", 32);
+    v.root.add(goat.root); shadowBlob.visible = false;
+    camYaw = v.yaw; v.y = groundY(v.x, v.z);
+    camPos.set(v.x - Math.sin(v.yaw) * (6 + v.L * 0.8), v.y + 3 + v.H, v.z - Math.cos(v.yaw) * (6 + v.L * 0.8));
+    sfx.honk(); setDriveUi(true);
+    if (!g.driveHint) { g.driveHint = true; toast("Joystick: gaz ve direksiyon · FREN · KORNA · İN"); }
+  }
+  function exitCar() {
+    const v = g.driving; if (!v) return;
+    const go = g.goat;
+    g.driving = null; g.handbrake = false;
+    v.state = v.dead ? "abandoned" : "abandoned"; v.cruise = 0;
+    scene.add(goat.root); goat.root.scale.setScalar(1); goat.root.rotation.set(0, v.yaw, 0); shadowBlob.visible = true;
+    const lx = Math.cos(v.yaw), lz = -Math.sin(v.yaw);
+    let ex = v.x + lx * (v.W / 2 + 0.9), ez = v.z + lz * (v.W / 2 + 0.9);
+    if (blockedAt(ex, ez, 0.5)) { ex = v.x - lx * (v.W / 2 + 0.9); ez = v.z - lz * (v.W / 2 + 0.9); }
+    go.x = ex; go.z = ez; go.yaw = v.yaw; go.speed = 0; go.y = groundY(ex, ez); go.vy = 0; go.dashT = 0;
+    setDriveUi(false);
+    camYaw = go.yaw;
+  }
+  function spawnPersonAt(kind, x, z) {
+    const inst = instance("woman", pick([null, 0xf2e6da, 0xdfe6f2, 0xe8f0e0, 0xf0e0e0]));
+    inst.root.position.set(x, groundY(x, z), z); scene.add(inst.root);
+    play(inst, "run", 1);
+    g.people.push({ kind, model: "woman", inst, root: inst.root, x, z, y: groundY(x, z), cx: Math.floor(x / CELL), cz: Math.floor(z / CELL), s: 0, inset: 2.4, dir: 1, hp: 1, mode: "flee",
+      flying: false, vx: 0, vy: 0, vz: 0, spin: new T.Vector3(), fade: 1, flash: 0, bounced: 0, hitCd: 0.6, calm: 4, yaw: 0, wyaw: rand(0, 6.28) });
+  }
+  function carCrash(v, impact) {
+    v.hp -= impact * 1.6; sfx.crash(); g.shake = Math.min(0.6, impact * 0.04);
+    if (impact > 9) popText(v.x, 2.4, v.z, pick(["Güm!", "Çarptı!", "Kaporta gitti!"]), "#2b1d14", 28);
+    if (v.hp <= 0 && !v.dead) { v.dead = true; g.ejectT = 0.7; toast("Araba hurdaya döndü!"); burst(v.x, 1.2, v.z, 14, "dust"); }
+  }
+  function horn() {
+    if (g.hornT > 0) return; g.hornT = 0.6; sfx.honk();
+    const v = g.driving; popText(v.x, 3, v.z, "Düüüt!", "#2b1d14", 28);
+    for (const p of g.people) if (!p.flying && p.kind !== "bekci" && Math.hypot(p.x - v.x, p.z - v.z) < 16) { p.mode = "flee"; p.calm = 3; }
+    for (const b of g.birds) if (b.kind === "guvercin" && b.state === "ground" && Math.hypot(b.x - v.x, b.z - v.z) < 14) b.t = -1, b.forceFly = true;
+  }
+  function updateDriving(dt) {
+    const v = g.driving, go = g.goat, spec = VEH_DRIVE[v.kind];
+    g.hornT = Math.max(0, (g.hornT || 0) - dt);
+    if (g.ejectT > 0) { g.ejectT -= dt; if (g.ejectT <= 0) { exitCar(); return; } }
+    const thr = v.dead ? 0 : input.jy, steer = input.jx;
+    if (thr > 0.05) v.speed += spec.acc * thr * dt * (v.speed < 0 ? 2.5 : 1);
+    else if (thr < -0.05) v.speed += (v.speed > 0.5 ? -spec.brake : -spec.acc * 0.6) * -thr * dt;
+    else v.speed *= 1 - Math.min(1, dt * 0.45);
+    if (g.handbrake) v.speed *= 1 - Math.min(1, dt * 3.5);
+    if (v.dead) v.speed *= 1 - Math.min(1, dt * 2.5);
+    v.speed = clamp(v.speed, -7, spec.max);
+    const turnF = clamp(v.speed / 5, -1, 1);
+    v.yaw -= steer * spec.turn * turnF * dt * (g.handbrake ? 1.5 : 1);
+    const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw);
+    v.x += fx * v.speed * dt; v.z += fz * v.speed * dt;
+    // binalar, ağaçlar, direkler
+    let hit = false; const r = v.W / 2;
+    for (const k of [-0.36, 0, 0.36]) {
+      const px = v.x + fx * v.L * k, pz = v.z + fz * v.L * k, pt = { x: px, z: pz };
+      if (pushOut(pt, r, false)) { v.x += pt.x - px; v.z += pt.z - pz; hit = true; }
+    }
+    if (hit) { const imp = Math.abs(v.speed); if (imp > 4) { carCrash(v, imp); v.speed *= -0.3; } else v.speed *= 0.6; }
+    // diğer araçlar
+    for (const o of g.vehicles) {
+      if (o === v || Math.hypot(o.x - v.x, o.z - v.z) > (o.L + v.L) / 2 + 1) continue;
+      for (const k of [-0.42, 0, 0.42]) {
+        const [la, ll] = carLocal(o, v.x + fx * v.L * k, v.z + fz * v.L * k);
+        if (Math.abs(la) < o.L / 2 + r * 0.8 && Math.abs(ll) < o.W / 2 + r * 0.8) {
+          const imp = Math.abs(v.speed);
+          if (imp > 5 && o.state !== "wreck" && o.hitCd <= 0) { knockVehicle(o); o.hitCd = 1.2; }
+          const dx = v.x - o.x, dz = v.z - o.z, dl = Math.hypot(dx, dz) || 1;
+          v.x += dx / dl * 0.35; v.z += dz / dl * 0.35;
+          if (imp > 4) carCrash(v, imp * 0.6);
+          v.speed *= -0.25;
+          break;
+        }
+      }
+    }
+    // yayalar: hızlı gelen arabadan uçarlar
+    for (const p of g.people) {
+      if (p.flying) continue;
+      const [la, ll] = carLocal(v, p.x, p.z);
+      if (Math.abs(la) < v.L / 2 + 0.3 && Math.abs(ll) < v.W / 2 + 0.3) {
+        if (Math.abs(v.speed) > 3 && p.hitCd <= 0) { knockPerson(p, { x: v.x - fx * 3, z: v.z - fz * 3 }, false); v.speed *= 0.85; }
+        else { const sgn = Math.sign(ll) || 1, c = Math.cos(v.yaw), s2 = Math.sin(v.yaw); p.x += c * 0.4 * sgn; p.z -= s2 * 0.4 * sgn; }
+        if (mode !== "play") return;
+      }
+    }
+    v.y = groundY(v.x, v.z);
+    v.root.position.set(v.x, v.y, v.z);
+    v.root.rotation.y = v.yaw + (v.kind === "truck" ? truckYaw : 0);
+    v.root.rotation.x = clamp(-(v.speed - (v.prevSpeed || 0)) / dt * 0.002, -0.04, 0.04); v.prevSpeed = v.speed;
+    for (let i = 0; i < v.wheels.length; i++) { const w = v.wheels[i]; w.children.forEach((c) => { c.rotation.x += v.speed * dt / 0.34; }); if (i < 2) w.rotation.y = steer * 0.45; }
+    if (v.mixer) v.mixer.update(dt * (v.speed / 10));
+    if (v.body && v.body.children) v.body.children.forEach((c) => { if (c.userData.tail) c.material = thr < -0.05 || g.handbrake ? CARMAT.tailOn : CARMAT.tail; });
+    // hasarlıysa kaputtan duman
+    if (v.hp < spec.hp * 0.4) { g.smokeT = (g.smokeT || 0) - dt; if (g.smokeT <= 0) { g.smokeT = 0.18; burst(v.x + fx * v.L * 0.4, v.y + 1.1, v.z + fz * v.L * 0.4, 1, "dust"); } }
+    go.x = v.x; go.z = v.z; go.yaw = v.yaw; go.speed = v.speed; go.y = v.y; go.vy = 0; go.dashT = 0; go.stun = 0;
+    g.dist += Math.abs(v.speed) * dt;
+  }
+
   function damage(reason) {
     if (g.inv > 0 || mode !== "play") return;
     g.lives--; g.inv = 1.6; g.combo = 0; g.shake = 0.5; sfx.hurt(); hurtFlash();
@@ -2110,27 +2260,30 @@
   touchEl.addEventListener("pointerup", joyEnd); touchEl.addEventListener("pointercancel", joyEnd);
   function padPress(el, fn) {
     el.addEventListener("pointerdown", (ev) => { ev.preventDefault(); ev.stopPropagation(); audio(); el.classList.add("down"); if (mode === "play") fn(); });
-    const up = () => el.classList.remove("down");
+    const up = () => { el.classList.remove("down"); if (el.id === "jumpPad" && g) g.handbrake = false; };
     el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up); el.addEventListener("pointerleave", up);
   }
   padPress($("tosPad"), () => headbutt()); padPress($("jumpPad"), () => jump());
+  function toggleCar() { if (!g || mode !== "play") return; if (g.driving) exitCar(); else if (g.nearCar) boardCar(g.nearCar); }
+  padPress($("carPad"), () => toggleCar());
   window.addEventListener("keydown", (ev) => {
     keys[ev.code] = true; if (ev.repeat) return;
+    if (mode === "play" && (ev.code === "KeyE" || ev.code === "KeyF")) { ev.preventDefault(); toggleCar(); return; }
     if (mode === "play") {
       if (ev.code === "Space") { ev.preventDefault(); jump(); }
       else if (["KeyJ", "KeyX", "Enter", "ShiftLeft"].includes(ev.code)) { ev.preventDefault(); headbutt(); }
       else if (ev.code === "Escape" || ev.code === "KeyP") pause();
     } else if (mode === "pause" && (ev.code === "Escape" || ev.code === "KeyP")) resume();
   });
-  window.addEventListener("keyup", (ev) => { keys[ev.code] = false; });
+  window.addEventListener("keyup", (ev) => { keys[ev.code] = false; if (ev.code === "Space" && g) g.handbrake = false; });
   function readInput() {
     let kx = 0, ky = 0;
     if (keys.ArrowLeft || keys.KeyA) kx -= 1; if (keys.ArrowRight || keys.KeyD) kx += 1;
     if (keys.ArrowUp || keys.KeyW) ky += 1; if (keys.ArrowDown || keys.KeyS) ky -= 1;
     input.jx = clamp(joy.x + kx, -1, 1); input.jy = clamp(joy.y + ky, -1, 1);
   }
-  function jump() { const go = g.goat; if (go.jumps < 2 && go.stun <= 0) { go.vy = go.jumps === 0 ? 8.5 : 7; go.jumps++; sfx.jump(); if (go.jumps === 1) burst(go.x, go.y + 0.1, go.z, 6, "dust"); } }
-  function headbutt() { const go = g.goat; if (go.cd <= 0 && go.stun <= 0) { go.dashT = DASH; go.cd = DASH_CD; sfx.dash(); } }
+  function jump() { if (g.driving) { g.handbrake = true; return; } const go = g.goat; if (go.jumps < 2 && go.stun <= 0) { go.vy = go.jumps === 0 ? 8.5 : 7; go.jumps++; sfx.jump(); if (go.jumps === 1) burst(go.x, go.y + 0.1, go.z, 6, "dust"); } }
+  function headbutt() { if (g.driving) { horn(); return; } const go = g.goat; if (go.cd <= 0 && go.stun <= 0) { go.dashT = DASH; go.cd = DASH_CD; sfx.dash(); } }
 
   // ================= Güncelleme =================
   function update(dt) {
@@ -2140,6 +2293,12 @@
     g.inv = Math.max(0, g.inv - dt); g.shake = Math.max(0, g.shake - dt);
     if (g.comboT > 0) { g.comboT -= dt; if (g.comboT <= 0) g.combo = 0; }
 
+    let fx, fz;
+    if (g.driving) { // --- araba kullanıyor
+      updateDriving(dt);
+      if (mode !== "play") return;
+      fx = Math.sin(go.yaw); fz = Math.cos(go.yaw);
+    } else {
     // --- keçi hareketi
     go.yaw -= input.jx * (go.dashT > 0 ? 1.2 : 2.5) * dt;
     const base = 6.5 + Math.min(g.t * 0.035, 4.5);
@@ -2149,7 +2308,7 @@
     if (go.stun > 0) sp = -3 * (go.stun / 0.45);
     if (g.inside) sp *= 0.6;
     go.speed += (sp - go.speed) * damp(go.dashT > 0 ? 30 : 8, dt);
-    const fx = Math.sin(go.yaw), fz = Math.cos(go.yaw);
+    fx = Math.sin(go.yaw); fz = Math.cos(go.yaw);
     go.x += fx * go.speed * dt; go.z += fz * go.speed * dt;
     g.dist += Math.max(0, go.speed) * dt;
     const gy = floorY(go.x, go.z);
@@ -2175,6 +2334,8 @@
       }
     }
     if (mode !== "play") return;
+    nearCarCheck(go);
+    }
 
     updatePeople(dt, go, fx, fz);
     if (mode !== "play") return;
@@ -2197,7 +2358,7 @@
     }
 
     // --- enerji
-    g.energy -= (3 + Math.min(g.t * 0.012, 3)) * dt;
+    g.energy -= (3 + Math.min(g.t * 0.012, 3)) * dt * (g.driving ? 0.5 : 1);
     if (g.energy <= 0) { g.energy = 0; gameOver("Keçinin enerjisi bitti!"); return; }
 
     // --- nüfus
@@ -2238,7 +2399,7 @@
       }
       const dx = go.x - p.x, dz = go.z - p.z, d = Math.hypot(dx, dz) || 0.01;
       let vx = 0, vz = 0, spd = 0, anim = null, ts = 1;
-      if (p.kind === "bekci" && d < 32) {
+      if (p.kind === "bekci" && d < 32 && !g.driving) {
         p.mode = "chase"; spd = k.chase + Math.min(g.t * 0.01, 1.5); vx = dx / d; vz = dz / d; anim = "run"; ts = 1.1;
       } else if (p.kind !== "bekci" && d < 9) {
         p.mode = "flee"; p.calm = 3; spd = k.flee; vx = -dx / d; vz = -dz / d; anim = "run"; ts = 1;
@@ -2275,7 +2436,7 @@
         const front = (fx * -dx + fz * -dz) / d;
         if (go.dashT > 0 && front > 0.1) knockPerson(p, go, false);
         else if (d < 1.0) {
-          if (p.kind === "bekci") { damage("Bekçi yakaladı!"); p.hitCd = 1; go.speed = -4; }
+          if (p.kind === "bekci" && !g.driving) { damage("Bekçi yakaladı!"); p.hitCd = 1; go.speed = -4; }
           else { p.x -= (dx / d) * 0.5; p.z -= (dz / d) * 0.5; }
         }
         if (mode !== "play") return;
@@ -2289,9 +2450,17 @@
     for (let i = g.vehicles.length - 1; i >= 0; i--) {
       const v = g.vehicles[i];
       v.hitCd = Math.max(0, v.hitCd - dt);
+      if (v.state === "player") continue; // keçi kullanıyor
       if (v.mixer) v.mixer.update(dt * (v.speed / 10));
       const ax = v.axis === "x" ? v.dir : 0, az = v.axis === "z" ? v.dir : 0; // yön vektörü
-      if (v.state === "wreck") {
+      if (v.free) { // keçinin bıraktığı araç: trafik yapay zekâsı yok
+        if (v.state === "wreck") { v.wreckT -= dt; v.hopV -= GRAV * dt; v.hop = Math.max(0, v.hop + v.hopV * dt); if (v.wreckT <= 0) { v.state = "abandoned"; v.yaw += v.yawOff; v.yawOff = 0; } }
+        else v.hop = 0;
+        if (Math.abs(v.speed) > 0.05) {
+          v.x += Math.sin(v.yaw) * v.speed * dt; v.z += Math.cos(v.yaw) * v.speed * dt; v.speed *= 1 - Math.min(1, dt * 1.2);
+          const pt = { x: v.x, z: v.z }; if (pushOut(pt, v.W / 2, false)) { v.x = pt.x; v.z = pt.z; v.speed *= -0.3; }
+        } else v.speed = 0;
+      } else if (v.state === "wreck") {
         v.wreckT -= dt; v.speed = 0;
         v.latOff += (v.latPush - v.latOff) * damp(8, dt);
         v.hopV -= GRAV * dt; v.hop = Math.max(0, v.hop + v.hopV * dt);
@@ -2316,21 +2485,23 @@
         v.latOff += (0 - v.latOff) * damp(1.5, dt); v.yawOff += (0 - v.yawOff) * damp(2, dt);
         v.hop = 0;
       }
-      v.along += v.speed * dt * v.dir;
-      const lat = v.lat + v.latOff;
-      v.x = v.axis === "z" ? lat : v.along; v.z = v.axis === "z" ? v.along : lat;
-      v.root.position.set(v.x, v.hop, v.z);
+      if (!v.free) {
+        v.along += v.speed * dt * v.dir;
+        const lat = v.lat + v.latOff;
+        v.x = v.axis === "z" ? lat : v.along; v.z = v.axis === "z" ? v.along : lat;
+      }
+      v.root.position.set(v.x, (v.free ? groundY(v.x, v.z) : 0) + v.hop, v.z);
       v.root.rotation.y = v.yaw + v.yawOff + (v.kind === "truck" ? truckYaw : 0);
       for (const w of v.wheels) w.children.forEach((c) => { c.rotation.x += v.speed * dt / 0.34; });
       // fren lambası ve dörtlüler
-      const braking = v.state === "wreck" ? Math.floor(v.wreckT * 3) % 2 === 0 : v.speed < v.cruise * 0.6;
+      const braking = v.state === "wreck" ? Math.floor(v.wreckT * 3) % 2 === 0 : v.free ? false : v.speed < v.cruise * 0.6;
       if (v.body && v.body.children) v.body.children.forEach((c) => { if (c.userData.tail) c.material = v.state === "wreck" ? (braking ? CARMAT.hazard : CARMAT.tail) : braking ? CARMAT.tailOn : CARMAT.tail; });
 
       // keçi ile çarpışma (araç yerel koordinatı)
       const rx = go.x - v.x, rz = go.z - v.z;
       const c = Math.cos(v.yaw + v.yawOff), s = Math.sin(v.yaw + v.yawOff);
       const la = rx * s + rz * c, ll = rx * c - rz * s;
-      if (Math.abs(la) < v.L / 2 + 0.45 && Math.abs(ll) < v.W / 2 + 0.45 && go.y < v.H + v.hop) {
+      if (!g.driving && Math.abs(la) < v.L / 2 + 0.45 && Math.abs(ll) < v.W / 2 + 0.45 && go.y < v.H + v.hop) {
         const toCar = ((v.x - go.x) * fx + (v.z - go.z) * fz) / (Math.hypot(v.x - go.x, v.z - go.z) || 1);
         if (go.dashT > 0 && toCar > 0 && v.hitCd <= 0) { knockVehicle(v); v.hitCd = 1.2; go.dashT = 0; go.speed = -2; }
         else if (v.state !== "wreck" && v.speed > 2.5 && g.inv <= 0) { damage("Araba çarptı!"); go.stun = 0.5; go.x += ax * 2.5; go.z += az * 2.5; }
@@ -2351,10 +2522,10 @@
       const dx = go.x - a.x, dz = go.z - a.z, d = Math.hypot(dx, dz) || 0.01;
       let vx = 0, vz = 0, spd = 0, anim = "survey", ts = 1;
       a.barkT = Math.max(0, a.barkT - dt);
-      if (a.kind === "kopek" && d < 9 && d > 1.6) { // köpek keçiyi kovalar ve havlar
+      if (a.kind === "kopek" && d < 9 && d > 1.6 && !g.driving) { // köpek keçiyi kovalar ve havlar
         spd = 6.2; vx = dx / d; vz = dz / d; anim = "run";
         if (a.barkT <= 0) { sfx.bark(); a.barkT = rand(1.2, 2.2); popText(a.x, 1.4, a.z, "Hav hav!", "#2b1d14", 24); }
-      } else if (a.kind === "kopek" && d <= 1.6) {
+      } else if (a.kind === "kopek" && d <= 1.6 && !g.driving) {
         anim = "survey"; if (go.slow <= 0 && go.dashT <= 0) { go.slow = 0.8; popText(go.x, 2.2, go.z, "Köpek yavaşlattı", "#2b1d14", 22); }
         if (go.dashT > 0) { a.x -= dx / d * 3; a.z -= dz / d * 3; popText(a.x, 1.4, a.z, "Kaçtı!", "#2b1d14", 22); }
       } else if (a.kind === "kedi" && d < 7) { spd = 7; vx = -dx / d; vz = -dz / d; anim = "run"; }
@@ -2388,7 +2559,7 @@
         b.t -= dt;
         if (b.t <= 0) { b.t = rand(0.5, 2); b.root.rotation.y += rand(-1, 1); }
         b.root.position.y = b.y + Math.abs(Math.sin(g.t * 6 + b.x)) * 0.02;
-        if (d < 6 || (go.dashT > 0 && d < 10)) {
+        if (d < 6 || (go.dashT > 0 && d < 10) || b.forceFly) {
           b.state = "fly"; if (b.inst.current) b.inst.current.timeScale = 1.6;
           const a = Math.atan2(b.x - go.x, b.z - go.z) + rand(-0.6, 0.6);
           b.vx = Math.sin(a) * rand(4, 7); b.vz = Math.cos(a) * rand(4, 7); b.vy = rand(4, 6);
@@ -2411,6 +2582,13 @@
 
   function animateGoat(dt) {
     const go = g.goat;
+    if (g.driving) { // şoför koltuğunda
+      const P = VEH_DRIVE[g.driving.kind].seat;
+      goat.root.position.set(P[0], P[1], P[2]); goat.root.rotation.set(0, 0, 0); goat.root.scale.setScalar(P[3]); goat.root.visible = true;
+      goat.legs.forEach((L) => { L.hip.rotation.x = L.front ? -1.0 : 1.2; L.knee.rotation.x = L.front ? 1.3 : -1.4; });
+      goat.neck.rotation.x = 0.1 + Math.sin(g.t * 3) * 0.04; goat.head.rotation.x = 0; goat.body.position.y = 0; goat.body.rotation.x = 0;
+      return;
+    }
     goat.root.position.set(go.x, go.y, go.z);
     goat.root.rotation.y = go.yaw;
     const sp = Math.abs(go.speed), air = go.y - floorY(go.x, go.z) > 0.05;
@@ -2468,14 +2646,14 @@
       camera.position.copy(camPos);
     } else {
       camYaw += angDiff(camYaw, go.yaw) * damp(4, dt);
-      const back = 7.4, up = 4.0;
+      const back = g.driving ? Math.min(14, 6 + g.driving.L * 0.8) : 7.4, up = g.driving ? 3 + g.driving.H * 0.95 : 4.0;
       let tx = go.x - Math.sin(camYaw) * back, tz = go.z - Math.cos(camYaw) * back;
       let tmin = 1;
       for (const c of collidersNear(go.x, go.z)) if (c.box) tmin = Math.min(tmin, rayBoxT(go.x, go.z, tx - go.x, tz - go.z, c));
       if (tmin < 1) { const t = Math.max(0.22, tmin - 0.06); tx = go.x + (tx - go.x) * t; tz = go.z + (tz - go.z) * t; }
       camPos.x += (tx - camPos.x) * damp(tmin < 1 ? 20 : 10, dt); camPos.z += (tz - camPos.z) * damp(tmin < 1 ? 20 : 10, dt);
       camPos.y += (go.y + up + (tmin < 1 ? 1.2 : 0) - camPos.y) * damp(6, dt);
-      camLook.set(go.x + Math.sin(camYaw) * 4, go.y + 1.2, go.z + Math.cos(camYaw) * 4);
+      const ahead = g.driving ? 7 : 4; camLook.set(go.x + Math.sin(camYaw) * ahead, go.y + 1.2, go.z + Math.cos(camYaw) * ahead);
       camera.position.copy(camPos);
       if (g.shake > 0) { const s = g.shake * 0.5; camera.position.x += rand(-s, s); camera.position.y += rand(-s, s); }
       const fovT = baseFov + Math.min(12, Math.max(0, go.speed - 7) * 0.8);
@@ -2487,7 +2665,7 @@
   }
 
   // ================= HUD =================
-  const ui = { hud: $("hud"), score: $("score"), mult: $("mult"), hearts: $("hearts"), energy: $("energy"), energyBar: $("energyBar"), hits: $("hits"), tosRing: $("tosRing"), pads: $("pads"), joy: $("joy"), room: $("roomChip"), roomName: $("roomName"), roomProg: $("roomProg") };
+  const ui = { hud: $("hud"), score: $("score"), mult: $("mult"), hearts: $("hearts"), energy: $("energy"), energyBar: $("energyBar"), hits: $("hits"), tosRing: $("tosRing"), pads: $("pads"), joy: $("joy"), room: $("roomChip"), roomName: $("roomName"), roomProg: $("roomProg"), carPad: $("carPad"), carChip: $("carChip"), carSpeed: $("carSpeed"), carHp: $("carHp") };
   let lastHud = "";
   function syncHud() {
     const mult = Math.min(5, g.combo), e = Math.round(g.energy), hitsTotal = g.hits + g.carHits;
@@ -2499,7 +2677,8 @@
       ui.mult.hidden = mult < 2; ui.mult.textContent = "x" + mult;
       ui.energy.style.transform = `scaleX(${e / 100})`; ui.energyBar.classList.toggle("low", e < 25);
     }
-    ui.tosRing.setAttribute("stroke-dashoffset", String(Math.round((g.goat.cd / DASH_CD) * 100)));
+    ui.tosRing.setAttribute("stroke-dashoffset", String(g.driving ? 0 : Math.round((g.goat.cd / DASH_CD) * 100)));
+    if (g.driving) { ui.carSpeed.textContent = Math.round(Math.abs(g.driving.speed) * 3.6); ui.carHp.style.transform = `scaleX(${Math.max(0, g.driving.hp) / VEH_DRIVE[g.driving.kind].hp})`; }
     drawMinimap();
   }
   const mm = $("minimap"), mx = mm.getContext("2d");
@@ -2562,7 +2741,7 @@
   // ================= Ekranlar =================
   const screens = { loading: $("loading"), menu: $("menu"), how: $("how"), paused: $("paused"), over: $("over") };
   function only(name) { for (const k2 in screens) screens[k2].hidden = k2 !== name; }
-  function setPlayUi(on) { ui.hud.hidden = !on; ui.pads.hidden = !on; ui.joy.hidden = !on; if (on) joyHome(); }
+  function setPlayUi(on) { ui.hud.hidden = !on; ui.pads.hidden = !on; ui.joy.hidden = !on; if (on) joyHome(); setDriveUi(false); }
   function refreshSoundLabels() { const t = "Ses: " + (soundOn ? "Açık" : "Kapalı"); $("soundBtn").textContent = t; $("pauseSoundBtn").textContent = t; }
   function toggleSound() { soundOn = !soundOn; store.set("keci3d-ses", soundOn); refreshSoundLabels(); if (soundOn) sfx.bleat(); }
   function toMenu() {
@@ -2583,7 +2762,7 @@
     $("overTitle").textContent = title; $("finalScore").textContent = g.score; $("bestScore").textContent = best;
     $("overLine").textContent = `${g.hits} kişiyi ve ${g.carHits} aracı tosladın, ${Math.round(g.dist)} metre koştun.`;
     $("newBest").hidden = !(isBest && g.score > 0);
-    ui.pads.hidden = true; ui.joy.hidden = true;
+    ui.pads.hidden = true; ui.joy.hidden = true; ui.carPad.hidden = true;
     setTimeout(() => { if (mode === "over") { only("over"); $("againBtn").focus({ preventScroll: true }); } }, 900);
   }
   function pause() { if (mode === "play") { mode = "pause"; only("paused"); } }
@@ -2643,7 +2822,7 @@
     loadingText.textContent = "Şehir kuruluyor…";
     setTimeout(() => {
       toMenu();
-      if (location.hash === "#test") window.__k = { get g() { return g; }, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
+      if (location.hash === "#test") window.__k = { get g() { return g; }, toggleCar, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
       requestAnimationFrame((t) => { last = t; frame(t); });
     }, 30);
   }).catch((e) => { loadingText.textContent = "Bir dosya yüklenemedi (" + e.message + "). Sayfayı yenile."; console.error(e); });
