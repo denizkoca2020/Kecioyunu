@@ -27,7 +27,7 @@ iPad için 3B sonsuz koşu oyunu. Keçi şehre iniyor: caddelerde istediğin yö
 
 ## Araba kullanma
 
-- Duran ya da yavaşlamış bir aracın (araba, taksi, otobüs, kamyon) yanına git: **BİN** tuşu çıkar (klavyede `E`). Şoför arabadan fırlayıp kaçar, keçi direksiyona geçer (+20).
+- Park etmiş ya da trafikte giden bir aracın (araba, taksi, otobüs, kamyon) yanına git: **BİN** tuşu çıkar (klavyede `E`). Giden araç durur, şoför fırlayıp kaçar, keçi direksiyona geçer (+20). Park etmiş arabaların şoförü yoktur.
 - Joystick ileri: gaz, geri: fren / geri vites, sağ-sol: direksiyon. **FREN** el freni (klavyede `Boşluk`), **KORNA** yayaları ve güvercinleri kaçırır (`J`), **İN** arabadan iner (`E`).
 - Arabadayken bekçiler ve köpekler seni yakalayamaz. Bekçi kovalarken arabaya binersen +30 kaçış bonusu.
 - Hızla çarptığın araçlar savrulur (puan), yayalar havaya uçar. Duvara ve araçlara çarpınca araba hasar alır; hasar artınca kaputtan duman çıkar, hurdaya dönünce keçi dışarı atlar.

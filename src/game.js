@@ -474,14 +474,7 @@
   }
   const torusGeo = new T.TorusGeometry(0.13, 0.045, 8, 18);
   MAT.simit = new T.MeshStandardMaterial({ color: 0xa8662c, roughness: 0.75 });
-  function addParkedCar(b, cols, x, z, ang) {
-    const v = carProto(pick(["sedan", "hatch", "sedan", "taxi"]), pick(CAR_COLORS));
-    v.updateMatrixWorld(true);
-    const base = new T.Matrix4().compose(new T.Vector3(x, 0, z), new T.Quaternion().setFromEuler(new T.Euler(0, ang, 0)), new T.Vector3(1, 1, 1));
-    v.traverse((o) => { if (o.isMesh) b.addMatrix(o.geometry, o.material, base.clone().multiply(o.matrixWorld), true); });
-    const c = Math.cos(ang), s = Math.sin(ang);
-    for (const k of [-1.4, 0, 1.4]) cols.push({ x: x + s * k, z: z + c * k, r: 1.05, solid: true, car: true });
-  }
+
 
   function addBuildingRow(b, cols, r, x0, z0, x1, z1, info) { // dikdörtgen arsayı binalarla doldurur
     const w = x1 - x0, d = z1 - z0;
@@ -576,8 +569,11 @@
     addTrafficLight(b, cols, bx1 - 0.5, bz1 - 0.5, Math.PI * 0.25);
     if (r() < 0.5) addBusStop(b, cols, bx0 + 2.2, cm - ox + oz + 10, Math.PI / 2 * 3 + Math.PI);
     // park edilmiş arabalar (park şeridi)
-    for (let s = oz + ROAD + 10; s < oz + CELL - ROAD - 8; s += 6.5) if (r() < 0.3) addParkedCar(b, cols, ox + PARK_LANE, s, Math.PI);
-    for (let s = ox + ROAD + 10; s < ox + CELL - ROAD - 8; s += 6.5) if (r() < 0.3) addParkedCar(b, cols, s, oz + PARK_LANE, Math.PI / 2);
+    // park edilmiş arabalar: keçi yaklaşınca binilebilir gerçek araçlara dönüşür
+    const parked = [];
+    const parkSpot = (x, z, yaw) => parked.push({ x, z, yaw, kind: ["sedan", "hatch", "sedan", "taxi"][Math.floor(r() * 4)], color: CAR_COLORS[Math.floor(r() * CAR_COLORS.length)], veh: null, gone: false });
+    for (let s = oz + ROAD + 10; s < oz + CELL - ROAD - 8; s += 6.5) if (r() < 0.3) parkSpot(ox + PARK_LANE, s, Math.PI);
+    for (let s = ox + ROAD + 10; s < ox + CELL - ROAD - 8; s += 6.5) if (r() < 0.3) parkSpot(s, oz + PARK_LANE, Math.PI / 2);
 
     // --- iç kısım
     const spawns = { pigeons: [] };
@@ -622,7 +618,7 @@
     b.build(group);
     for (const d of doors) group.add(d.group);
     scene.add(group);
-    chunks.set(key(cx, cz), { group, cols, cx, cz, type, spawns, pigeonsDone: false, doors });
+    chunks.set(key(cx, cz), { group, cols, cx, cz, type, spawns, pigeonsDone: false, doors, parked });
   }
   function unloadChunk(k, c) {
     scene.remove(c.group);
@@ -1832,7 +1828,7 @@
       people: [], vehicles: [], animals: [], pickups: [], birds: [], fx: [], spawnT: 0, honkT: 0,
     };
     camYaw = st.yaw;
-    for (const c of chunks.values()) c.pigeonsDone = false;
+    for (const c of chunks.values()) { c.pigeonsDone = false; for (const sp of c.parked) { sp.veh = null; sp.gone = false; } }
     for (let i = 0; i < 10; i++) spawnPerson(true);
     for (let i = 0; i < 6; i++) spawnVehicle(true);
     spawnAnimal(true);
@@ -1925,7 +1921,7 @@
     else v = buildCar(kind, pick(CAR_COLORS));
     const x = axis === "z" ? lat : along, z = axis === "z" ? along : lat;
     // aynı şeritte yakın araç varsa kurma
-    for (const o of g.vehicles) if (Math.hypot(o.x - x, o.z - z) < 14) return;
+    for (const o of g.vehicles) if (!o.free && Math.hypot(o.x - x, o.z - z) < 14) return;
     if (Math.hypot(x - go.x, z - go.z) < 25) return;
     v.root.position.set(x, 0, z);
     const yaw = axis === "z" ? (dir > 0 ? 0 : Math.PI) : (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
@@ -1935,6 +1931,16 @@
     g.vehicles.push(Object.assign(v, { kind, axis, dir, lat, along, x, z, yaw, speed: cruise, cruise, state: "drive", wreckT: 0, hop: 0, hopV: 0, tilt: 0, latOff: 0, yawOff: 0, hitCd: 0, honked: 0 }));
   }
   let truckYaw = 0;
+  function spawnParkedNear(go) {
+    for (const c of chunks.values()) for (const sp of c.parked) {
+      if (sp.gone || sp.veh || Math.hypot(sp.x - go.x, sp.z - go.z) > 75) continue;
+      const v = buildCar(sp.kind, sp.color);
+      v.root.position.set(sp.x, 0, sp.z); v.root.rotation.y = sp.yaw; scene.add(v.root);
+      Object.assign(v, { kind: sp.kind, axis: "free", dir: 1, lat: 0, along: 0, x: sp.x, z: sp.z, yaw: sp.yaw, speed: 0, cruise: 0, state: "abandoned", free: true, ownerless: true,
+        wreckT: 0, hop: 0, hopV: 0, tilt: 0, latOff: 0, yawOff: 0, hitCd: 0, honked: 0, spot: sp });
+      g.vehicles.push(v); sp.veh = v;
+    }
+  }
   function spawnAnimal(initial) {
     const kind = Math.random() < 0.6 ? "kopek" : "kedi";
     const [cx, cz] = randomCellNear(initial ? 10 : 35, initial ? 40 : 65);
@@ -2061,16 +2067,17 @@
     return [rx * s2 + rz * c, rx * c - rz * s2];
   }
   function nearCarCheck(go) {
-    let best = null, bd = 1.4;
+    let best = null, bd = 99;
     if (!g.inside) for (const v of g.vehicles) {
       if (v.dead || v.state === "player") continue;
-      if (Math.abs(v.speed) > 3 && v.state !== "wreck") continue;
       const [la, ll] = carLocal(v, go.x, go.z);
       const dist = Math.hypot(Math.max(0, Math.abs(la) - v.L / 2), Math.max(0, Math.abs(ll) - v.W / 2));
-      if (dist < bd) { bd = dist; best = v; }
+      const reach = Math.abs(v.speed) > 3 ? 2.2 : 1.6; // giden araca da atlanabilir
+      if (dist < reach && dist < bd) { bd = dist; best = v; }
     }
-    g.nearCar = best;
-    ui.carPad.hidden = !best;
+    if (best) { g.nearCar = best; g.nearCarT = 0.5; }
+    else if ((g.nearCarT = (g.nearCarT || 0) - 1 / 60) <= 0 || !g.nearCar || Math.hypot(g.nearCar.x - go.x, g.nearCar.z - go.z) > g.nearCar.L / 2 + 5) g.nearCar = null;
+    ui.carPad.hidden = !g.nearCar;
     if (best && !g.carHint) { g.carHint = true; toast(isTouch ? "Arabaya binmek için BİN tuşuna bas!" : "Arabaya binmek için E tuşuna bas!"); }
   }
   function setDriveUi(on) {
@@ -2085,6 +2092,7 @@
     const go = g.goat, spec = VEH_DRIVE[v.kind];
     v.yaw += v.yawOff || 0; v.yawOff = 0; v.latOff = 0; v.latPush = 0; v.hop = 0;
     v.state = "player"; v.free = true; v.axis = "free"; v.speed = 0;
+    if (v.spot) v.spot.gone = true;
     if (v.hp === undefined) v.hp = spec.hp;
     g.driving = v; g.nearCar = null; g.handbrake = false;
     // şoför kapıdan fırlar ve kaçar
@@ -2371,6 +2379,7 @@
       if (g.pickups.filter((p) => p.type === "simit").length < 4) spawnPickup("simit");
       if (g.lives < 3 && !g.pickups.some((p) => p.type === "elma") && Math.random() < 0.06) spawnPickup("elma");
       spawnPigeons(go.x, go.z);
+      if (!g.inside) spawnParkedNear(go);
     }
     updateFx(dt);
     syncHud();
@@ -2477,7 +2486,7 @@
           const [oa, ol] = rel(o.x, o.z);
           const same = o.axis === v.axis && o.dir === v.dir && Math.abs(o.lat - v.lat) < 1;
           if (same && oa > 0 && oa < (o.L + v.L) / 2 + 6) target = Math.min(target, o.speed * 0.9, Math.max(0, oa - (o.L + v.L) / 2 - 2));
-          else if (!same && o.axis !== v.axis && v.waitT < 3 && oa > 0 && oa < v.L / 2 + 7 && ol < (o.L + v.W) / 2 + 0.5) target = Math.min(target, Math.max(0, oa - v.L / 2 - 2.5));
+          else if (!same && o.axis !== v.axis && v.waitT < 3 && oa > 0 && oa < v.L / 2 + 7 && ol < (Math.abs(Math.cos(o.yaw - v.yaw)) * o.W + Math.abs(Math.sin(o.yaw - v.yaw)) * o.L + v.W) / 2 + 0.4) target = Math.min(target, Math.max(0, oa - v.L / 2 - 2.5));
         }
         v.waitT = v.speed < 0.5 ? (v.waitT || 0) + dt : 0;
         v.honked = Math.max(0, (v.honked || 0) - dt);
@@ -2511,7 +2520,10 @@
         else { const sgn = Math.sign(la) || 1; go.x += s * pushA * sgn; go.z += c * pushA * sgn; }
         if (mode !== "play") return;
       }
-      if (Math.hypot(v.x - go.x, v.z - go.z) > 150) { scene.remove(v.root); g.vehicles.splice(i, 1); }
+      if (Math.hypot(v.x - go.x, v.z - go.z) > 150) {
+        if (v.spot) { if (Math.hypot(v.x - v.spot.x, v.z - v.spot.z) > 1) v.spot.gone = true; v.spot.veh = null; }
+        scene.remove(v.root); g.vehicles.splice(i, 1);
+      }
     }
   }
 
