@@ -1074,8 +1074,10 @@
   }
 
   function hitDoor(door, go) {
-    door.hp--; go.dashT = 0; go.speed = -2.5; g.shake = 0.35;
-    if (door.hp > 0) { sfx.thud(); door.wob = 1; popText(door.x, 3, door.z, "Çatırdadı! Bir daha!", "#2b1d14", 26); return; }
+    door.hp--; go.dashT = 0; g.shake = 0.35;
+    if (door.hp > 0) { // geri sekme: keçi kapının tam karşısına hizalanır, ikinci tos kolayca isabet eder
+      go.speed = -1.5; go.x = door.x + door.nx * 1.5; go.z = door.z + door.nz * 1.5; go.yaw = Math.atan2(-door.nx, -door.nz); sfx.thud(); door.wob = 1; popText(door.x, 3, door.z, "Çatırdadı! Bir daha!", "#2b1d14", 26); return; }
+    go.speed = 3; g.pendingEnter = { door, t: 0.3 }; // kırılan kapıdan doğrudan içeri dalar
     door.state = "broken"; brokenDoors.add(door.id); door.col.solid = false; door.panel.visible = false; door.glow.visible = true;
     sfx.crash();
     if (door.kind === "shop") burst(door.x, 1.3, door.z, 28, "glass");
@@ -1089,10 +1091,10 @@
       burst(door.x, 1.2, door.z, 8, "dust");
     }
     addCombo(15, door.x, 3, door.z, "Kapı kırıldı!", 6);
-    if (!g.enterHint) { g.enterHint = true; setTimeout(() => toast("İçeri girmek için kapıdan koş!"), 400); }
   }
 
-  function handleDoors(go, fx, fz) {
+  function handleDoors(go, fx, fz, dt) {
+    if (g.pendingEnter) { g.pendingEnter.t -= dt; if (g.pendingEnter.t <= 0) { const dr = g.pendingEnter.door; g.pendingEnter = null; enterInterior(dr); } return; }
     const ccx = Math.floor(go.x / CELL), ccz = Math.floor(go.z / CELL);
     for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
       const c = chunks.get(key(ccx + dx, ccz + dz)); if (!c) continue;
@@ -1102,9 +1104,23 @@
         if (d > 6) continue;
         const facing = -(fx * door.nx + fz * door.nz);
         if (door.state === "closed") {
-          if (go.dashT > 0 && d < 1.7 && facing > 0.3) { hitDoor(door, go); return; }
+          const along = ddx * -door.nz + ddz * door.nx, out = ddx * door.nx + ddz * door.nz;
+          if (go.dashT > 0 && facing > 0.2 && out > -0.2 && out < 3.5 && Math.abs(along) < 2.6) { // toslarken kapıya doğru çek
+            const k2 = Math.min(1, dt * 8) * along; go.x -= -door.nz * k2; go.z -= door.nx * k2;
+          }
+          if (go.dashT > 0 && facing > 0.2 && out < 1.8 && Math.abs(along) < DOOR_W / 2 + 0.6) { hitDoor(door, go); return; }
           if (!g.doorHint && d < 4.5) { g.doorHint = true; toast("Kapıya tosla, kır ve içeri gir!"); }
-        } else if (d < 1.35 && facing > 0.35 && go.speed > 0.5 && go.y - CURB < 0.6) { enterInterior(door); return; }
+        } else {
+          // kırık kapı: kapı ekseni boyunca konum (along) ve dışarı uzaklık (out)
+          const along = ddx * -door.nz + ddz * door.nx, out = ddx * door.nx + ddz * door.nz;
+          const moving = go.speed > 0.3 && facing > 0.15;
+          if (moving && out > -0.2 && out < 3.2 && Math.abs(along) < 2.4) { // keçiyi kapıya doğru hafifçe çek
+            const k2 = Math.min(1, dt * 6) * along;
+            go.x -= -door.nz * k2; go.z -= door.nx * k2;
+          }
+          if (moving && out < 1.15 && Math.abs(along) < DOOR_W / 2 + 0.4 && go.y - CURB < 0.9) { enterInterior(door); return; }
+          if (!g.enterHint && d < 4) { g.enterHint = true; toast("Kırık kapıdan koşarak içeri gir!"); }
+        }
       }
     }
   }
@@ -1661,7 +1677,7 @@
   function updateInterior(dt, go, fx, fz) {
     const room = g.inside; room.t += dt;
     // duvarlar, eşyalar; kapıdan çıkış
-    if (go.z < 0.75 && Math.abs(go.x) < DOOR_W / 2 && fz < -0.3 && go.speed > 0.3) { exitInterior(); return; }
+    if (go.z < 1.0 && Math.abs(go.x) < DOOR_W / 2 + 0.4 && fz < -0.15 && go.speed > 0.3) { exitInterior(); return; }
     const hitWall = roomPush(room, go, 0.45);
     if (hitWall && go.dashT > 0) { go.dashT = 0; g.shake = 0.15; }
     // eşyaya tosla
@@ -1798,7 +1814,7 @@
     for (const c of chunks.values()) for (const d of c.doors) { d.state = "closed"; d.hp = d.kind === "shop" ? 1 : 2; d.panel.visible = true; d.glow.visible = false; d.col.solid = true; }
     g = {
       t: 0, score: 0, lives: 3, energy: 100, combo: 0, comboT: 0, hits: 0, carHits: 0, dist: 0, inv: 0, shake: 0,
-      inside: null, street: null, doorHint: false, enterHint: false, insideCount: 0,
+      inside: null, street: null, pendingEnter: null, doorHint: false, enterHint: false, insideCount: 0,
       goat: { x: 32, z: 20.5, y: CURB, vy: 0, yaw: Math.PI, speed: 0, dashT: 0, cd: 0, stun: 0, phase: 0, jumps: 0, slow: 0 },
       people: [], vehicles: [], animals: [], pickups: [], birds: [], fx: [], spawnT: 0, honkT: 0,
     };
@@ -2101,7 +2117,7 @@
       g.energy -= 2 * dt; if (g.energy <= 0) { g.energy = 0; gameOver("Keçinin enerjisi bitti!"); return; }
       updateFx(dt); syncHud(); return;
     }
-    handleDoors(go, fx, fz);
+    handleDoors(go, fx, fz, dt);
 
     // --- engeller
     if (pushOut(go, 0.5) && go.dashT > 0) { go.dashT = 0; g.shake = 0.2; }
@@ -2579,7 +2595,7 @@
     setTimeout(() => {
       updateChunks(32, 20.5, true);
       toMenu();
-      if (location.hash === "#test") window.__k = { get g() { return g; }, chunks, iscene, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
+      if (location.hash === "#test") window.__k = { get g() { return g; }, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
       requestAnimationFrame((t) => { last = t; frame(t); });
     }, 30);
   }).catch((e) => { loadingText.textContent = "Bir dosya yüklenemedi (" + e.message + "). Sayfayı yenile."; console.error(e); });
