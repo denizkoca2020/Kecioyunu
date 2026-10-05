@@ -89,25 +89,35 @@
   const SUN_DIR = new T.Vector3(0.55, 0.75, -0.38).normalize();
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 160 });
+  Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 320 });
   sun.shadow.bias = -0.0006;
   sun.shadow.normalBias = 0.03;
   scene.add(sun, sun.target);
 
-  // Fiziksel gökyüzü bir kez küp dokuya çizilir
-  (function makeSky() {
+  // Fiziksel gökyüzü küp dokuya çizilir; her oyunda günün saati rastgele seçilir
+  const TIMES = [
+    { name: "Sabah", dir: [-0.62, 0.42, 0.58], sun: 0xffe0bc, si: 1.1, hemi: 0x9cc4e4, hi: 0.32, fog: 0xd3dce2, exp: 0.92, turb: 4, ray: 2.2, mie: 0.005 },
+    { name: "Öğle", dir: [0.55, 0.75, -0.38], sun: 0xfff1dc, si: 1.25, hemi: 0xdfeeff, hi: 0.3, fog: 0xc9d8e2, exp: 0.9, turb: 6, ray: 1.6, mie: 0.004 },
+    { name: "Gün batımı", dir: [0.78, 0.16, -0.32], sun: 0xffa45c, si: 1.05, hemi: 0xffc896, hi: 0.36, fog: 0xd9ab8c, exp: 0.98, turb: 9, ray: 3, mie: 0.012 },
+  ];
+  let skyRT = null;
+  function setTimeOfDay(tod) {
+    SUN_DIR.set(tod.dir[0], tod.dir[1], tod.dir[2]).normalize();
+    sun.color.setHex(tod.sun); sun.intensity = tod.si;
+    hemi.color.setHex(tod.hemi); hemi.intensity = tod.hi;
+    scene.fog.color.setHex(tod.fog); renderer.toneMappingExposure = tod.exp;
     const skyScene = new T.Scene();
     const sky = new T.Sky(); sky.scale.setScalar(1000); skyScene.add(sky);
     const u = sky.material.uniforms;
-    u.turbidity.value = 6; u.rayleigh.value = 1.6; u.mieCoefficient.value = 0.004; u.mieDirectionalG.value = 0.85;
+    u.turbidity.value = tod.turb; u.rayleigh.value = tod.ray; u.mieCoefficient.value = tod.mie; u.mieDirectionalG.value = 0.85;
     u.sunPosition.value.copy(SUN_DIR).multiplyScalar(1000);
     const rt = new T.WebGLCubeRenderTarget(512, { encoding: T.sRGBEncoding, generateMipmaps: true, minFilter: T.LinearMipmapLinearFilter });
-    const cc = new T.CubeCamera(1, 2000, rt);
-    const tm = renderer.toneMapping; renderer.toneMapping = T.ACESFilmicToneMapping;
-    cc.update(renderer, skyScene);
-    renderer.toneMapping = tm;
-    scene.background = rt.texture;
-  })();
+    new T.CubeCamera(1, 2000, rt).update(renderer, skyScene);
+    sky.geometry.dispose(); sky.material.dispose();
+    if (skyRT) skyRT.dispose();
+    skyRT = rt; scene.background = rt.texture;
+  }
+  setTimeOfDay(TIMES[1]);
 
   // ================= Prosedürel dokular =================
   function cv(w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; return [c, c.getContext("2d")]; }
@@ -1780,7 +1790,8 @@
       }
     }
     // bir süre sonra bekçi gelir
-    if (!room.guardCame && room.t > 9 + (g.insideCount % 3) * 3) {
+    if (room.guardRoll === undefined) room.guardRoll = Math.random() < 0.45;
+    if (!room.guardCame && room.guardRoll && room.t > 18 + (g.insideCount % 3) * 4) {
       room.guardCame = true; const p = spawnInside(room, "bekci", 0, 0.6); p.yaw = 0;
       toast("Bekçi geldi! Kaç ya da tosla!"); sfx.honk();
     }
@@ -1812,19 +1823,50 @@
     if (ui.room) ui.room.hidden = true;
     brokenDoors.clear(); roomMemory.clear();
     for (const c of chunks.values()) for (const d of c.doors) { d.state = "closed"; d.hp = d.kind === "shop" ? 1 : 2; d.panel.visible = true; d.glow.visible = false; d.col.solid = true; }
+    const st = pickStart();
     g = {
       t: 0, score: 0, lives: 3, energy: 100, combo: 0, comboT: 0, hits: 0, carHits: 0, dist: 0, inv: 0, shake: 0,
       inside: null, street: null, pendingEnter: null, doorHint: false, enterHint: false, insideCount: 0,
-      goat: { x: 32, z: 20.5, y: CURB, vy: 0, yaw: Math.PI, speed: 0, dashT: 0, cd: 0, stun: 0, phase: 0, jumps: 0, slow: 0 },
+      startInfo: st, goat: { x: st.x, z: st.z, y: CURB, vy: 0, yaw: st.yaw, speed: 0, dashT: 0, cd: 0, stun: 0, phase: 0, jumps: 0, slow: 0 },
       people: [], vehicles: [], animals: [], pickups: [], birds: [], fx: [], spawnT: 0, honkT: 0,
     };
-    camYaw = 0;
+    camYaw = st.yaw;
     for (const c of chunks.values()) c.pigeonsDone = false;
     for (let i = 0; i < 10; i++) spawnPerson(true);
     for (let i = 0; i < 6; i++) spawnVehicle(true);
-    for (let i = 0; i < 3; i++) spawnAnimal(true);
+    spawnAnimal(true);
     for (let i = 0; i < 3; i++) spawnBird();
     for (let i = 0; i < 4; i++) spawnPickup("simit");
+  }
+
+  // --- rastgele başlangıç: şehrin farklı bir yerinde, farklı bir saatte
+  const DISTRICTS = ["Kadıköy", "Beşiktaş", "Üsküdar", "Karşıyaka", "Konak", "Çankaya", "Kızılay", "Osmangazi", "Nilüfer", "Muratpaşa", "Ortahisar", "Tepebaşı", "Selçuklu", "Atakum"];
+  function pickStart() {
+    const want = pick(["square", "park", "street", "street"]);
+    let cx = 0, cz = 0, type = "square";
+    for (let i = 0; i < 60; i++) {
+      cx = Math.floor(rand(-40, 40)); cz = Math.floor(rand(-40, 40)); type = cellType(cx, cz);
+      if (want === "street" ? type === "block" : type === want) break;
+    }
+    updateChunks(cx * CELL + 32, cz * CELL + 32, true); // başlangıç çevresini hemen kur
+    const tod = pick(TIMES); setTimeOfDay(tod);
+    const cm = cx * CELL + 32;
+    let x, z, yaw, place;
+    if (type === "block") {
+      place = "Cadde";
+      for (let i = 0; i < 20; i++) {
+        const s0 = rand(0, 4 * (CELL - 2 * (ROAD + 2.4)));
+        const [px, pz, side] = sidewalkPoint(cx, cz, s0, 2.4);
+        x = px; z = pz; yaw = [Math.PI / 2, 0, -Math.PI / 2, Math.PI][side]; // kaldırım boyunca bakar
+        if (!blockedAt(x, z, 1.2)) break;
+      }
+    } else {
+      place = type === "park" ? "Park" : "Saat kulesi meydanı";
+      const a = rand(0, Math.PI * 2), r0 = type === "park" ? 6 : 11.5;
+      x = cm + Math.sin(a) * r0; z = cz * CELL + 32 + Math.cos(a) * r0; yaw = a;
+      for (let i = 0; i < 12 && blockedAt(x, z, 1.0); i++) { const a2 = rand(0, Math.PI * 2); x = cm + Math.sin(a2) * r0; z = cz * CELL + 32 + Math.cos(a2) * r0; yaw = a2; }
+    }
+    return { x, z, yaw, label: `${pick(DISTRICTS)} · ${place} · ${tod.name}` };
   }
 
   // --- kaldırım rotası: blok etrafında dikdörtgen
@@ -1846,7 +1888,10 @@
   }
   function spawnPerson(initial) {
     const r = Math.random(), t = g.t;
-    const bek = t < 12 ? 0 : Math.min(0.3, 0.12 + t / 500);
+    // bekçi az: ilk 25 sn yok, aynı anda en fazla 2 (3 dakikadan sonra 3)
+    const guards = g.people.filter((p) => p.kind === "bekci" && !p.flying).length;
+    const maxGuards = t < 25 ? 0 : t < 180 ? 2 : 3;
+    const bek = guards >= maxGuards ? 0 : Math.min(0.15, 0.08 + t / 2000);
     const kind = r < bek ? "bekci" : r < bek + 0.2 ? "kosucu" : "yaya";
     const [cx, cz] = randomCellNear(initial ? 8 : 40, initial ? 45 : 70);
     const inset = rand(1.6, 3.2), s = rand(0, 400), dir = Math.random() < 0.5 ? 1 : -1;
@@ -2161,7 +2206,7 @@
       g.spawnT = 0.4;
       if (g.people.filter((p) => !p.flying).length < Math.min(22, 14 + Math.floor(g.t / 30))) spawnPerson(false);
       if (g.vehicles.length < 12) spawnVehicle(false);
-      if (g.animals.length < 5) spawnAnimal(false);
+      if (g.animals.length < 2 && Math.random() < 0.3) spawnAnimal(false);
       if (g.pickups.filter((p) => p.type === "simit").length < 4) spawnPickup("simit");
       if (g.lives < 3 && !g.pickups.some((p) => p.type === "elma") && Math.random() < 0.06) spawnPickup("elma");
       spawnPigeons(go.x, go.z);
@@ -2306,7 +2351,7 @@
       const dx = go.x - a.x, dz = go.z - a.z, d = Math.hypot(dx, dz) || 0.01;
       let vx = 0, vz = 0, spd = 0, anim = "survey", ts = 1;
       a.barkT = Math.max(0, a.barkT - dt);
-      if (a.kind === "kopek" && d < 16 && d > 1.6) { // köpek keçiyi kovalar ve havlar
+      if (a.kind === "kopek" && d < 9 && d > 1.6) { // köpek keçiyi kovalar ve havlar
         spd = 6.2; vx = dx / d; vz = dz / d; anim = "run";
         if (a.barkT <= 0) { sfx.bark(); a.barkT = rand(1.2, 2.2); popText(a.x, 1.4, a.z, "Hav hav!", "#2b1d14", 24); }
       } else if (a.kind === "kopek" && d <= 1.6) {
@@ -2415,7 +2460,10 @@
     }
     if (menu) {
       camYaw += dt * 0.15;
-      camPos.set(go.x + Math.sin(camYaw) * 5.2, go.y + 1.9, go.z + Math.cos(camYaw) * 5.2);
+      let mxp = go.x + Math.sin(camYaw) * 5.2, mzp = go.z + Math.cos(camYaw) * 5.2, tm = 1;
+      for (const c of collidersNear(go.x, go.z)) if (c.box) tm = Math.min(tm, rayBoxT(go.x, go.z, mxp - go.x, mzp - go.z, c));
+      if (tm < 1) { const t2 = Math.max(0.3, tm - 0.08); mxp = go.x + (mxp - go.x) * t2; mzp = go.z + (mzp - go.z) * t2; }
+      camPos.set(mxp, go.y + 1.9 + (tm < 1 ? 1 : 0), mzp);
       camLook.set(go.x - 1.6 * Math.cos(camYaw), go.y + 1.1, go.z + 1.6 * Math.sin(camYaw));
       camera.position.copy(camPos);
     } else {
@@ -2434,7 +2482,7 @@
       camera.fov += (fovT - camera.fov) * damp(4, dt); camera.updateProjectionMatrix();
     }
     camera.lookAt(camLook);
-    sun.position.set(go.x + SUN_DIR.x * 80, SUN_DIR.y * 80, go.z + SUN_DIR.z * 80); sun.target.position.set(go.x, 0, go.z);
+    sun.position.set(go.x + SUN_DIR.x * 150, SUN_DIR.y * 150, go.z + SUN_DIR.z * 150); sun.target.position.set(go.x, 0, go.z);
     ground.position.set(Math.round(go.x / 8) * 8, 0, Math.round(go.z / 8) * 8);
   }
 
@@ -2523,8 +2571,9 @@
   }
   function start() {
     audio(); newGame(); lastHud = "";
-    const go = g.goat; camYaw = go.yaw; camPos.set(go.x, go.y + 4, go.z - 7.4);
+    const go = g.goat; camYaw = go.yaw; camPos.set(go.x - Math.sin(go.yaw) * 7.4, go.y + 4, go.z - Math.cos(go.yaw) * 7.4);
     mode = "play"; only(null); setPlayUi(true); syncHud(); sfx.bleat();
+    toast(g.startInfo.label);
   }
   function gameOver(title) {
     if (mode !== "play") return;
@@ -2593,7 +2642,6 @@
     shareLocomotion();
     loadingText.textContent = "Şehir kuruluyor…";
     setTimeout(() => {
-      updateChunks(32, 20.5, true);
       toMenu();
       if (location.hash === "#test") window.__k = { get g() { return g; }, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
       requestAnimationFrame((t) => { last = t; frame(t); });
