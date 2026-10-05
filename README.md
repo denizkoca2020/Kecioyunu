@@ -1,6 +1,6 @@
 # Keçi Oyunu
 
-iPad için 3B sonsuz koşu oyunu. Keçi köyde serbestçe koşar; onu istediğin yöne sürüp önüne çıkana toslarsın.
+iPad için 3B sonsuz koşu oyunu. Keçi şehre iniyor: caddelerde istediğin yöne koşup yayalara, bekçilere ve arabalara tosluyorsun.
 
 ## Kontroller
 
@@ -11,25 +11,43 @@ iPad için 3B sonsuz koşu oyunu. Keçi köyde serbestçe koşar; onu istediğin
 | **ZIPLA** tuşu | `Boşluk` | Zıpla (havada bir kez daha: çift zıplama) |
 | ❚❚ | `Esc` / `P` | Duraklat |
 
+## Şehir
+
+- Izgara düzeninde sonsuz şehir: dört şeritli caddeler, şerit çizgileri, yaya geçitleri, trafik ışıkları, sokak lambaları, otobüs durakları.
+- Balkonlu apartmanlar; zemin katlarda bakkal, fırın, eczane, berber, çay ocağı, kasap, manav gibi dükkânlar.
+- Parklar (çeşme, banklar) ve saat kuleli meydanlar. Çatılarda su depoları ve çanak antenler.
+- Trafik: sedan, hatchback, sarı taksi, otobüs ve kamyon. Araçlar şeritlerinde gider, önlerine çıkınca fren yapıp korna çalar.
+- İnsanlar kaldırımlarda yürür, keçiyi görünce kaçar. Meydanlarda sokak dansçısı samba yapar. Bekçiler keçiyi kovalar.
+- Hayvanlar: sokak köpekleri havlayıp peşinden koşar, kediler kaçar, güvercinler havalanır, leylekler tepede süzülür.
+
 ## Kurallar
 
-- **Köylü** 10, **turist** 15, **bekçi** 30 puan. Bekçiye iki kez toslamak gerekir.
-- Art arda toslamalar kombo yapar (x5'e kadar). Uçan biri başkasına çarparsa o da uçar (zincir).
-- Köylüler kaçar, turistler fotoğraf çeker, **bekçiler kovalar**. Bekçi dokunursa 1 can gider.
-- **Taşa** ve **çite** çarpmak da 1 can götürür. Üstlerinden zıpla. Evler, ağaçlar ve saman yığınları yolu keser.
-- **Enerji** koştukça azalır. Toslamak ve **ot** yemek doldurur. **Kırmızı elma** 1 can verir.
-- Can ya da enerji biterse oyun biter. Sağ üstteki mini harita insanları (mavi köylü, turuncu turist, lacivert bekçi) ve otları gösterir.
+- Yaya 10, dansçı 15, koşucu 20, bekçi 40 puan (bekçiye iki kez toslamak gerekir).
+- Araba 25, taksi 30, kamyon 45, otobüs 60 puan. Toslanan araç savrulur, alarmı çalar, dörtlüleri yanar.
+- Art arda toslamalar kombo yapar (x5'e kadar). Uçan biri başkasına çarparsa o da uçar.
+- Hareket eden araç çarparsa ya da bekçi yakalarsa 1 can gider. Çöp kutusu, baba ve bariyerlere çarpmak da can götürür; üstlerinden zıpla.
+- Enerji koştukça azalır. Toslamak ve **simit** yemek doldurur. **Kırmızı elma** 1 can verir.
 
 ## Teknik
 
-- Tek sayfa: `index.html`. 3B motor olarak [three.js](https://threejs.org) r128 kullanılır (`vendor/three.min.js`, MIT lisansı).
-- Tüm modeller kodla, basit geometrilerden kurulur. Dışarıdan görsel ya da ses dosyası yoktur. Sesler Web Audio ile üretilir.
-- Dünya 30 m'lik parçalardan oluşur ve keçi ilerledikçe sonsuza kadar üretilir.
-- Rekor ve ses ayarı cihazda (`localStorage`) saklanır.
+- `index.html` arayüzü, `src/game.js` oyunu içerir. 3B motor: [three.js](https://threejs.org) r128 (`vendor/`, MIT).
+- Binalar, cepheler, dükkân tabelaları, araçlar ve keçi kodla üretilir; dokular tuval üzerinde çizilir.
+- Işık: fiziksel gökyüzü + gerçek fotoğraftan HDR ortam haritası, ACES ton eşleme, yumuşak gölgeler.
+- İnsanlar animasyonlu GLTF modellerdir. Bekçinin yürüme/koşma animasyonları diğer karakterlere iskelet farkı düzeltilerek aktarılır.
+
+### Model ve doku kaynakları (`assets/`)
+
+| Dosya | Kaynak | Lisans |
+|---|---|---|
+| `Soldier.glb` (bekçi), `Michelle.glb` (yaya, dansçı) | three.js örnekleri, Adobe Mixamo karakterleri | Mixamo kullanım koşulları |
+| `Fox.glb` (köpek, kedi) | PixelMannen, tomkranis, Khronos glTF örnekleri | CC-BY 4.0 |
+| `CesiumMilkTruck.glb` (kamyon) | Cesium, Khronos glTF örnekleri | CC-BY 4.0 |
+| `Stork.glb`, `Parrot.glb` (leylek, güvercin) | three.js örnekleri, mirada / ro.me | Ticari olmayan kullanım |
+| `pedestrian_overpass_1k.hdr` | Poly Haven, three.js örnekleri | CC0 |
 
 ## iPad'de çalıştırma
 
-1. Depoyu bir web adresinde yayınla (ör. GitHub Pages: Settings → Pages → dalı seç).
+1. Depoyu bir web adresinde yayınla (ör. GitHub Pages: Settings → Pages → dalı seç). Dosyalar `file://` ile açılmaz, bir sunucudan açılmalı.
 2. iPad'de Safari ile aç.
 3. Paylaş → **Ana Ekrana Ekle**. Keçi simgesiyle, tam ekran bir uygulama gibi açılır.
 
