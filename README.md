@@ -20,6 +20,15 @@ iPad için 3B sonsuz koşu oyunu. Keçi şehre iniyor: caddelerde istediğin yö
 - İnsanlar kaldırımlarda yürür, keçiyi görünce kaçar. Meydanlarda sokak dansçısı samba yapar. Bekçiler keçiyi kovalar.
 - Hayvanlar: sokak köpekleri havlayıp peşinden koşar, kediler kaçar, güvercinler havalanır, leylekler tepede süzülür.
 
+## Kapılar ve iç mekânlar
+
+- Her binanın sokağa bakan bir kapısı var (mini haritada kırmızı nokta). Dükkânlarda cam kapı, apartmanlarda tahta kapı.
+- Kapıya tosla: cam kapı tek darbede tuzla buz olur, tahta kapı iki darbede kırılır. Kırık kapıdan koşarak içeri gir; çıkmak için kapıya geri koş.
+- İç mekânlar dükkânın türüne göre değişir: bakkal/market, fırın (taş fırın, ekmek rafları), kasap (et vitrini, asılı etler), berber/kuaför (koltuklar, aynalar), çay ocağı/lokanta (masalar, çay bardakları, semaver), emlakçı (masalar, bilgisayarlar, ilan panosu) ve apartman dairesi (kilim, koltuk, televizyon, kitaplık, mutfak).
+- İçeride: rafları devir, buzdolabı camını ve aynaları kır, masaları ve sandalyeleri uçur, televizyonu patlat, ekmek ve simit ye, esnafı ve müşterileri kovala. Uçan biri eşyaya çarparsa onu da devirir. Her şeyi dağıtınca +100.
+- Bir süre sonra bekçi kapıdan içeri dalar.
+- Kırılan kapılar ve dağıtılan odalar oyun boyunca öyle kalır.
+
 ## Kurallar
 
 - Yaya 10, dansçı 15, koşucu 20, bekçi 40 puan (bekçiye iki kez toslamak gerekir).

@@ -99,6 +99,17 @@ body {
   position: absolute; left: 0; top: 0; font-family: var(--font-display); font-size: 34px; white-space: nowrap;
   -webkit-text-stroke: 6px var(--cream); paint-order: stroke fill; will-change: transform, opacity;
 }
+.fade { position: fixed; inset: 0; z-index: 3; pointer-events: none; background: #16110d; opacity: 0; transition: opacity 0.2s; }
+.toast {
+  position: fixed; z-index: 3; left: 50%; top: calc(var(--safe-t) + 92px); transform: translateX(-50%);
+  max-width: min(560px, calc(100% - 32px)); text-align: center; pointer-events: none;
+  background: var(--ink); color: var(--cream); border-radius: 14px; padding: 8px 18px;
+  font-family: var(--font-display); font-size: clamp(18px, 2.4vw, 24px); box-shadow: 0 4px 0 rgba(0,0,0,0.25);
+}
+.toast.show { animation: toastIn 0.25s ease-out; }
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+#roomChip { background: var(--ink); color: var(--cream); }
+#roomChip small { opacity: 0.85; }
 .flash { position: fixed; inset: 0; z-index: 2; pointer-events: none; background: #d6402b; opacity: 0; transition: opacity 0.35s; }
 
 /* ---- Menüler ---- */
@@ -148,7 +159,7 @@ body {
   #jumpPad { width: 78px; height: 78px; }
   #minimap { width: 104px; height: 104px; }
 }
-@media (prefers-reduced-motion: reduce) { .flash { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .flash, .fade { transition: none; } .toast.show { animation: none; } }
 </style>
 </head>
 <body>
@@ -156,12 +167,15 @@ body {
 <div id="touch"></div>
 <div id="popups"></div>
 <div class="flash" id="flash"></div>
+<div class="fade" id="fade"></div>
+<div class="toast" id="toast" hidden></div>
 
 <div class="hud" id="hud" hidden>
   <div class="hud-col">
     <div class="hud-row">
       <div class="chip"><small>Puan</small><span id="score">0</span></div>
       <div class="chip" id="mult" hidden>x2</div>
+      <div class="chip" id="roomChip" hidden><small id="roomName">Dükkân</small><span id="roomProg">0/0</span></div>
     </div>
     <div class="hud-row">
       <div class="chip" id="hearts" aria-label="Can">♥♥♥</div>
@@ -208,6 +222,8 @@ body {
       <div class="rule"><b>ZIPLA</b><span>Çöp kutularının, babaların ve bariyerlerin üstünden atla.</span></div>
       <div class="rule"><b>Puan</b><span>Yaya 10, koşucu 20, bekçi 40. Araba 25, taksi 30, kamyon 45, otobüs 60. Art arda toslarsan kombo x5'e kadar çıkar.</span></div>
       <div class="rule"><b>Tehlike</b><span>Hareket eden araç çarparsa can gider. Bekçiler kovalar ve yakalarsa can götürür; onlara iki kez toslamak gerekir. Sokak köpekleri havlayıp seni yavaşlatır.</span></div>
+      <div class="rule"><b>Kapılar</b><span>Binaların kapısına tosla. Cam kapı tek darbede, tahta kapı iki darbede kırılır. Kırık kapıdan koşarak içeri gir, çıkmak için kapıya geri koş.</span></div>
+      <div class="rule"><b>İçeride</b><span>Rafları devir, aynaları ve camları kır, masaları uçur, televizyonu patlat, ekmek ve simit ye, esnafı kovala. Her şeyi dağıtırsan +100. Biraz sonra bekçi gelir!</span></div>
       <div class="rule"><b>Enerji</b><span>Koştukça azalır. Toslamak ve simit yemek doldurur. Kırmızı elma 1 can verir.</span></div>
     </div>
     <button class="btn" id="howClose">Anladım</button>
