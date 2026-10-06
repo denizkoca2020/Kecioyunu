@@ -56,6 +56,13 @@
       gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(0.07, t + 0.03); gn.gain.exponentialRampToValueAtTime(0.0001, t + 0.48);
       o.connect(gn).connect(a.destination); o.start(t); lfo.start(t); o.stop(t + 0.5); lfo.stop(t + 0.5);
     },
+    voice() { const v = ANIMALS[animalId].voice; if (v === "growl") sfx.growl(); else if (v === "boom") sfx.boom(); else sfx.bleat(); },
+    growl() { noise(0.5, 0.18, 380); tone("sawtooth", 110, 70, 0.5, 0.07); },
+    boom() { tone("sine", 95, 70, 0.6, 0.2); tone("sine", 80, 60, 0.5, 0.15, 0.25); },
+    roar() { noise(1.3, 0.45, 520); tone("sawtooth", 150, 60, 1.2, 0.12); tone("square", 90, 45, 1.1, 0.06, 0.05); },
+    chomp() { tone("square", 260, 120, 0.08, 0.1); noise(0.08, 0.15, 1500); },
+    swipe() { noise(0.2, 0.22, 3000); },
+    peck() { tone("sine", 1400, 900, 0.05, 0.1); },
     thud() { tone("triangle", 190, 45, 0.2, 0.32); noise(0.12, 0.2, 500); },
     crash() { noise(0.45, 0.35, 2500); tone("square", 140, 60, 0.3, 0.08); },
     alarm() { for (let i = 0; i < 6; i++) tone("square", i % 2 ? 900 : 700, i % 2 ? 900 : 700, 0.14, 0.05, i * 0.16); },
@@ -873,6 +880,261 @@
     const beard = mesh(beardG, furShade, 1, 1, 1, 0, -0.2, 0.26); beard.rotation.x = 0.25; head.add(beard);
     body.add(neck);
     return { root, body, legs, neck, head, tail };
+  }
+
+  // ================= Oynanabilir hayvanlar: aslan ve deve kuşu =================
+  // Keçiyle aynı yapı: { root, body, legs[{hip,knee,front}], neck, head, tail, jaw? }
+  function buildLion() {
+    const furTex = furTexture();
+    const coat = new T.MeshStandardMaterial({ map: furTex, color: 0xc98a35, roughness: 0.95, envMapIntensity: 0.5 });
+    const coatLight = new T.MeshStandardMaterial({ map: furTex, color: 0xe6c288, roughness: 1, envMapIntensity: 0.5 });
+    const mane = new T.MeshStandardMaterial({ map: furTex, color: 0x8a5222, roughness: 1, envMapIntensity: 0.4 });
+    const maneDark = new T.MeshStandardMaterial({ map: furTex, color: 0x5e3416, roughness: 1, envMapIntensity: 0.4 });
+    const dark = new T.MeshStandardMaterial({ color: 0x2a1c14, roughness: 0.5 });
+    const eyeM = new T.MeshPhysicalMaterial({ color: 0xd8a020, roughness: 0.05, clearcoat: 1 });
+    const mouth = new T.MeshStandardMaterial({ color: 0x8a2a2a, roughness: 0.6 });
+    const tooth = new T.MeshStandardMaterial({ color: 0xf4efe2, roughness: 0.3 });
+    const root = new T.Group(), body = new T.Group(); root.add(body);
+    const mesh = (geo, m, sx, sy, sz, x, y, z, parent = body) => { const o = new T.Mesh(geo, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
+    // gövde: göğüs geniş, bel ince
+    const torsoG = new T.SphereGeometry(1, 32, 24), tp = torsoG.attributes.position;
+    for (let i = 0; i < tp.count; i++) { const z = tp.getZ(i); const k = z > 0.2 ? 1.08 : 1 - (0.2 - z) * 0.18; tp.setX(i, tp.getX(i) * k); tp.setY(i, tp.getY(i) * k); }
+    torsoG.computeVertexNormals();
+    mesh(torsoG, coat, 0.42, 0.44, 1.0, 0, 1.05, 0);
+    mesh(GEO.sphere, coatLight, 0.3, 0.2, 0.7, 0, 0.78, 0.05);
+    // bacaklar
+    const upperG = new T.CylinderGeometry(0.12, 0.09, 0.42, 12); upperG.translate(0, -0.21, 0);
+    const lowerG = new T.CylinderGeometry(0.085, 0.075, 0.4, 12); lowerG.translate(0, -0.2, 0);
+    const legs = [];
+    for (const [lx, lz, front] of [[-0.22, 0.62, 1], [0.22, 0.62, 1], [-0.22, -0.62, 0], [0.22, -0.62, 0]]) {
+      const hip = new T.Group(); hip.position.set(lx, 0.88, lz);
+      mesh(upperG, coat, 1, 1, 1, 0, 0, 0, hip);
+      const knee = new T.Group(); knee.position.y = -0.42; hip.add(knee);
+      mesh(lowerG, coat, 1, 1, 1, 0, 0, 0, knee);
+      mesh(GEO.sphere, coatLight, 0.11, 0.07, 0.15, 0, -0.42, 0.04, knee); // pati
+      body.add(hip); legs.push({ hip, knee, front });
+    }
+    // kuyruk ve püskül
+    const tail = new T.Group(); tail.position.set(0, 1.18, -0.98);
+    const pts = []; for (let i = 0; i <= 8; i++) { const t = i / 8; pts.push(new T.Vector3(0, -Math.sin(t * 1.6) * 0.55, -t * 0.75)); }
+    const tc = new T.CatmullRomCurve3(pts);
+    const tm = new T.Mesh(new T.TubeGeometry(tc, 16, 0.035, 8, false), coat); tm.castShadow = true; tail.add(tm);
+    const tuft = mesh(GEO.sphere, maneDark, 0.08, 0.13, 0.08, 0, 0, 0, tail); tuft.position.copy(tc.getPointAt(1));
+    body.add(tail);
+    // boyun + yele + kafa
+    const neck = new T.Group(); neck.position.set(0, 1.25, 0.82);
+    mesh(GEO.sphere, mane, 0.42, 0.48, 0.4, 0, 0.05, -0.05, neck);
+    // yele: üst üste binen yumuşak tutamlar
+    const lockG = new T.SphereGeometry(1, 10, 8); lockG.translate(0, 0.6, 0);
+    const lr = rng(77);
+    for (let i = 0; i < 110; i++) {
+      const a = lr() * Math.PI * 2, e = (lr() - 0.45) * Math.PI * 0.95;
+      const dir = new T.Vector3(Math.cos(a) * Math.cos(e), Math.sin(e), Math.sin(a) * Math.cos(e) * 0.55 - 0.2).normalize();
+      const l = new T.Mesh(lockG, lr() < 0.55 ? mane : maneDark); l.castShadow = true;
+      l.position.set(dir.x * 0.3, 0.08 + dir.y * 0.34, -0.06 + dir.z * 0.26);
+      l.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), dir);
+      const sz = 0.09 + lr() * 0.05; l.scale.set(sz, 0.2 + lr() * 0.1, sz * 0.8);
+      neck.add(l);
+    }
+    const head = new T.Group(); head.position.set(0, 0.12, 0.3); neck.add(head);
+    mesh(GEO.sphere, coat, 0.27, 0.27, 0.3, 0, 0, 0, head);
+    mesh(GEO.sphere, coatLight, 0.17, 0.13, 0.17, 0, -0.07, 0.24, head); // ağız çevresi
+    mesh(GEO.sphere, dark, 0.06, 0.045, 0.04, 0, 0.0, 0.39, head); // burun
+    for (const s of [-1, 1]) {
+      mesh(GEO.sphere, eyeM, 0.04, 0.035, 0.03, s * 0.11, 0.08, 0.24, head);
+      mesh(GEO.sphere, dark, 0.017, 0.03, 0.01, s * 0.115, 0.08, 0.27, head);
+      mesh(GEO.sphere, coat, 0.08, 0.08, 0.04, s * 0.2, 0.22, -0.02, head); // kulak
+      mesh(GEO.cone, tooth, 0.012, 0.05, 0.012, s * 0.06, -0.15, 0.33, head).rotation.x = Math.PI;
+    }
+    // alt çene (ısırma ve kükreme için açılır)
+    const jaw = new T.Group(); jaw.position.set(0, -0.12, 0.12); head.add(jaw);
+    mesh(GEO.sphere, coatLight, 0.13, 0.05, 0.17, 0, -0.03, 0.1, jaw);
+    mesh(GEO.sphere, mouth, 0.1, 0.03, 0.14, 0, 0.0, 0.1, jaw);
+    for (const s of [-1, 1]) mesh(GEO.cone, tooth, 0.012, 0.045, 0.012, s * 0.06, 0.03, 0.2, jaw);
+    body.add(neck);
+    return { root, body, legs, neck, head, tail, jaw };
+  }
+
+  function buildOstrich() {
+    const feather = new T.MeshStandardMaterial({ map: furTexture(), color: 0x2a2624, roughness: 1, envMapIntensity: 0.4 });
+    const plume = new T.MeshStandardMaterial({ color: 0xf4f0e6, roughness: 1, envMapIntensity: 0.5 });
+    const skin = new T.MeshStandardMaterial({ color: 0xd6a294, roughness: 0.7, envMapIntensity: 0.5 });
+    const legSkin = new T.MeshStandardMaterial({ color: 0xc98f7e, roughness: 0.8, envMapIntensity: 0.5 });
+    const beakM = new T.MeshStandardMaterial({ color: 0xd9a35c, roughness: 0.4 });
+    const eyeM = new T.MeshPhysicalMaterial({ color: 0x1a120c, roughness: 0.05, clearcoat: 1 });
+    const root = new T.Group(), body = new T.Group(); root.add(body);
+    const mesh = (geo, m, sx, sy, sz, x, y, z, parent = body) => { const o = new T.Mesh(geo, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
+    mesh(GEO.sphere, feather, 0.52, 0.46, 0.68, 0, 1.38, -0.05);
+    // beyaz kanat ve kuyruk tüyleri
+    const plumeG = new T.ConeGeometry(0.09, 0.5, 7); plumeG.translate(0, -0.25, 0);
+    const lr = rng(91);
+    for (let i = 0; i < 26; i++) {
+      const side = i < 13 ? -1 : 1, k = i % 13;
+      const p = mesh(plumeG, plume, 1, 0.8 + lr() * 0.5, 1, side * (0.42 + lr() * 0.08), 1.42 - k * 0.012, -0.35 + k * 0.05);
+      p.rotation.set(-1.9 + lr() * 0.3, 0, side * (0.5 + lr() * 0.3));
+    }
+    for (let i = 0; i < 9; i++) { const p = mesh(plumeG, plume, 1.1, 0.9, 1.1, (lr() - 0.5) * 0.4, 1.55, -0.62); p.rotation.set(-2.3 + lr() * 0.5, 0, (lr() - 0.5) * 0.6); }
+    // uzun bacaklar (iki tane)
+    const thighG = new T.CylinderGeometry(0.11, 0.07, 0.5, 10); thighG.translate(0, -0.25, 0);
+    const shinG = new T.CylinderGeometry(0.045, 0.04, 0.62, 10); shinG.translate(0, -0.31, 0);
+    const legs = [];
+    for (const lx of [-0.17, 0.17]) {
+      const hip = new T.Group(); hip.position.set(lx, 1.18, 0.0);
+      mesh(thighG, legSkin, 1, 1, 1, 0, 0, 0, hip);
+      const knee = new T.Group(); knee.position.y = -0.5; hip.add(knee);
+      mesh(shinG, legSkin, 1, 1, 1, 0, 0, 0, knee);
+      mesh(GEO.box, legSkin, 0.09, 0.05, 0.26, 0, -0.64, 0.09, knee); // iki parmaklı ayak
+      mesh(GEO.box, legSkin, 0.05, 0.04, 0.14, 0.06, -0.65, 0.12, knee);
+      body.add(hip); legs.push({ hip, knee, front: 0 });
+    }
+    // uzun boyun ve küçük kafa
+    const neck = new T.Group(); neck.position.set(0, 1.6, 0.42);
+    const neckG = new T.CylinderGeometry(0.045, 0.09, 0.95, 12); neckG.translate(0, 0.47, 0);
+    const nm = mesh(neckG, skin, 1, 1, 1, 0, 0, 0, neck); nm.rotation.x = 0.2;
+    const head = new T.Group(); head.position.set(0, 0.95, 0.2); neck.add(head);
+    mesh(GEO.sphere, skin, 0.1, 0.09, 0.12, 0, 0, 0, head);
+    const beak = mesh(GEO.cone, beakM, 0.06, 0.18, 0.035, 0, -0.02, 0.17, head); beak.rotation.x = Math.PI / 2;
+    for (const s of [-1, 1]) { mesh(GEO.sphere, eyeM, 0.032, 0.032, 0.03, s * 0.07, 0.03, 0.04, head); mesh(GEO.box, eyeM, 0.004, 0.012, 0.05, s * 0.09, 0.06, 0.04, head); }
+    const tail = new T.Group(); tail.position.set(0, 1.5, -0.6); body.add(tail);
+    body.add(neck);
+    return { root, body, legs, neck, head, tail, jaw: null };
+  }
+
+  const ANIMALS = {
+    keci: { name: "Keçi", gen: "Keçinin", speed: 1, jump: 1, seat: 1, camUp: 0, shadow: 1, voice: "bleat",
+      slots: [null, { id: "jump", label: "ZIPLA" }, { id: "tos", label: "TOS" }] },
+    aslan: { name: "Aslan", gen: "Aslanın", speed: 1.12, jump: 1, seat: 0.82, camUp: 0.3, shadow: 1.35, voice: "growl",
+      slots: [{ id: "roar", label: "KÜKRE" }, { id: "bite", label: "ISIR" }, { id: "claw", label: "PENÇE" }] },
+    devekusu: { name: "Deve kuşu", gen: "Deve kuşunun", speed: 1.38, jump: 1.2, seat: 0.55, camUp: 1.0, shadow: 1.1, voice: "boom",
+      slots: [null, { id: "jump", label: "ZIPLA" }, { id: "peck", label: "GAGALA" }] },
+  };
+  let animalId = store.get("keci-hayvan", "keci");
+  if (!ANIMALS[animalId]) animalId = "keci";
+  const animalModels = {};
+  const A = () => ANIMALS[animalId];
+  function useAnimal(id) {
+    animalId = id; store.set("keci-hayvan", id);
+    const parent = goat && goat.root.parent;
+    if (goat && parent) parent.remove(goat.root);
+    if (!animalModels[id]) animalModels[id] = id === "aslan" ? buildLion() : id === "devekusu" ? buildOstrich() : buildGoat();
+    goat = animalModels[id];
+    goat.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    (parent || scene).add(goat.root);
+    if (shadowBlob) shadowBlob.scale.setScalar(A().shadow);
+    document.querySelectorAll("#animalPick button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.animal === id)));
+    applyAnimalUi();
+  }
+  function applyAnimalUi() {
+    if (g && g.driving) return;
+    const sl = A().slots;
+    $("extraPad").hidden = !sl[0];
+    if (sl[0]) $("extraLabel").textContent = sl[0].label;
+    $("jumpLabel").textContent = sl[1].label;
+    $("tosLabel").textContent = sl[2].label;
+    $("tosPad").classList.toggle("small", sl[2].label.length > 4);
+    $("jumpPad").classList.toggle("small", sl[1].label.length > 5);
+  }
+
+  // --- yetenekler
+  const CD = { tos: 0.55, bite: 0.8, claw: 0.45, peck: 0.24, roar: 6 };
+  function action(slot) {
+    if (!g || mode !== "play") return;
+    if (g.driving) { if (slot === 2) horn(); else if (slot === 1) g.handbrake = true; return; }
+    const sl = A().slots[slot]; if (!sl) return;
+    const go = g.goat;
+    if (go.stun > 0) return;
+    switch (sl.id) {
+      case "jump": jump(); break;
+      case "tos": headbutt(); break;
+      case "bite": // ileri atılıp ısırır (alçak engellerin üstünden de atlar)
+        if (go.cd > 0) return;
+        go.dashT = 0.3; go.cd = CD.bite; go.cdMax = CD.bite; if (go.y - floorY(go.x, go.z) < 0.1) { go.vy = 6.5; go.jumps = 1; }
+        go.anim = { type: "bite", t: 0.35, d: 0.35 }; sfx.chomp(); break;
+      case "claw":
+        if (go.cd > 0) return;
+        go.cd = CD.claw; go.cdMax = CD.claw; go.anim = { type: "claw", t: 0.3, d: 0.3 }; sfx.swipe();
+        melee(2.6, 0.9, ["PENÇE!", "Şak!", "Hırrr!", "Yırttı!"]);
+        break;
+      case "peck":
+        if (go.cd > 0) return;
+        go.cd = CD.peck; go.cdMax = CD.peck; go.anim = { type: "peck", t: 0.22, d: 0.22 }; sfx.peck();
+        melee(2.7, 0.75, ["Gagaladı!", "Tık!", "Tak tak!", "Gaga!"]);
+        break;
+      case "roar":
+        if ((go.roarCd || 0) > 0) return;
+        go.roarCd = CD.roar; go.anim = { type: "roar", t: 0.9, d: 0.9 }; roar(); break;
+    }
+  }
+  function inCone(go, fx, fz, x, z, range, cone, extra = 0) {
+    const dx = x - go.x, dz = z - go.z, d = Math.hypot(dx, dz);
+    return d < range + extra && (d < 0.6 || (dx * fx + dz * fz) / d > Math.cos(cone));
+  }
+  function melee(range, cone, words) {
+    const go = g.goat, fx = Math.sin(go.yaw), fz = Math.cos(go.yaw);
+    let n = 0;
+    if (g.inside) {
+      const room = g.inside;
+      for (const it of room.items) if (!it.broken && inCone(go, fx, fz, it.x, it.z, range, cone, it.col.box ? 0.6 : it.r)) { hitItem(room, it, go, fx, fz); n++; }
+      for (const p of room.people) if (!p.flying && p.hitCd <= 0 && inCone(go, fx, fz, p.x, p.z, range, cone)) { knockInside(room, p, go, fx, fz, pick(words)); n++; }
+      syncRoomHud();
+    } else {
+      for (const p of g.people) if (!p.flying && inCone(go, fx, fz, p.x, p.z, range, cone) && Math.abs(p.y - go.y) < 1.6) { knockPerson(p, go, false, pick(words)); n++; }
+      for (const v of g.vehicles) {
+        if (v.state === "player" || v.state === "wreck" || v.hitCd > 0) continue;
+        const [la, ll] = carLocal(v, go.x, go.z);
+        if (Math.hypot(Math.max(0, Math.abs(la) - v.L / 2), Math.max(0, Math.abs(ll) - v.W / 2)) < range - 0.8 && inCone(go, fx, fz, v.x, v.z, range, 1.2, v.L / 2)) { knockVehicle(v); v.hitCd = 1.2; n++; }
+      }
+      const ccx = Math.floor(go.x / CELL), ccz = Math.floor(go.z / CELL);
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        const c = chunks.get(key(ccx + dx, ccz + dz)); if (!c) continue;
+        for (const door of c.doors) if (door.state === "closed" && inCone(go, fx, fz, door.x, door.z, range, cone, 0.6)) { hitDoor(door, go); return n + 1; }
+      }
+    }
+    if (!n) burst(go.x + fx * 1.4, go.y + 0.9, go.z + fz * 1.4, 4, "dust");
+    return n;
+  }
+  function knockInside(room, p, go, fx, fz, word) {
+    const dx = go.x - p.x, dz = go.z - p.z, d = Math.hypot(dx, dz) || 1;
+    if (p.hp > 1) { p.hp--; p.flash = 0.3; p.hitCd = 0.45; p.x -= dx / d * 1.5; p.z -= dz / d * 1.5; g.score += 5; sfx.thud(); popText(p.x, 2.6, p.z, "+5 · bir daha!", "#2b1d14", 26); return; }
+    p.flying = true; g.hits++;
+    const pw = rand(8, 11); p.vx = (-dx / d * 0.4 + fx * 0.6) * pw; p.vz = (-dz / d * 0.4 + fz * 0.6) * pw; p.vy = rand(5, 7);
+    p.spin.set(rand(-8, 8), rand(-5, 5), rand(-8, 8)); if (p.inst.current) p.inst.current.timeScale = 0.2;
+    g.shake = 0.3; sfx.thud(); if (Math.random() < 0.6) sfx.voice(); burst(p.x, 1.3, p.z, 12, "star");
+    addCombo(INSIDE_PTS[p.kind], p.x, 2.6, p.z, word || (p.kind === "esnaf" ? "Esnaf uçtu!" : pick(["TOS!", "BAM!", "Meee!", "Güm!"])), p.kind === "bekci" ? 28 : 14);
+  }
+  const waveGeo = new T.RingGeometry(0.85, 1, 48);
+  function roar() {
+    const go = g.goat;
+    sfx.roar(); g.shake = 0.7;
+    popText(go.x, go.y + 3.2, go.z, "KÜKREDİ!", "#d6402b", 46);
+    const wave = new T.Mesh(waveGeo, new T.MeshBasicMaterial({ color: 0xfff1c8, transparent: true, opacity: 0.8, depthWrite: false, side: T.DoubleSide }));
+    wave.rotation.x = -Math.PI / 2; wave.position.set(go.x, go.y + 0.3, go.z); curScene().add(wave);
+    g.waves.push({ mesh: wave, t: 0 });
+    let n = 0;
+    if (g.inside) {
+      const room = g.inside;
+      for (const p of room.people) { if (p.flying) continue; const d = Math.hypot(p.x - go.x, p.z - go.z); if (d < 5.5) { knockInside(room, p, go, Math.sin(go.yaw), Math.cos(go.yaw), "Korkudan uçtu!"); n++; } }
+      for (const it of room.items) if (!it.broken && (it.kind === "glass" || it.kind === "tv") && Math.hypot(it.x - go.x, it.z - go.z) < 6) { hitItem(room, it, go, Math.sin(go.yaw), Math.cos(go.yaw)); n++; } // camlar çatlar
+      syncRoomHud();
+    } else {
+      for (const p of g.people) {
+        if (p.flying) continue;
+        const d = Math.hypot(p.x - go.x, p.z - go.z);
+        if (d < 6) { knockPerson(p, go, false, "Korkudan uçtu!"); n++; }
+        else if (d < 20) { p.mode = "flee"; p.calm = 4; p.scared = 5; }
+      }
+      for (const v of g.vehicles) if (v.state === "drive" && Math.hypot(v.x - go.x, v.z - go.z) < 16) v.scaredT = 3;
+      for (const a of g.animals) if (Math.hypot(a.x - go.x, a.z - go.z) < 20) a.scared = 5;
+      for (const b of g.birds) if (b.kind === "guvercin" && b.state === "ground" && Math.hypot(b.x - go.x, b.z - go.z) < 22) b.forceFly = true;
+    }
+    if (n) g.score += n * 5;
+  }
+  function updateWaves(dt) {
+    for (let i = g.waves.length - 1; i >= 0; i--) {
+      const w = g.waves[i]; w.t += dt;
+      const s = 0.5 + w.t * 28; w.mesh.scale.set(s, s, s); w.mesh.material.opacity = Math.max(0, 0.8 - w.t * 1.3);
+      if (w.t > 0.65) { if (w.mesh.parent) w.mesh.parent.remove(w.mesh); w.mesh.material.dispose(); g.waves.splice(i, 1); }
+    }
   }
 
   // ================= GLTF modeller =================
@@ -1772,16 +2034,8 @@
       p.root.visible = !(p.flash > 0 && Math.floor(p.flash * 20) % 2 === 0);
       if (d < 1.8 && p.hitCd <= 0 && go.y < 1.4) {
         const front = (fx * -dx + fz * -dz) / d;
-        if (go.dashT > 0 && front > 0.1) {
-          if (p.hp > 1) { p.hp--; p.flash = 0.3; p.hitCd = 0.45; p.x -= dx / d * 1.5; p.z -= dz / d * 1.5; g.score += 5; sfx.thud(); popText(p.x, 2.6, p.z, "+5 · bir daha!", "#2b1d14", 26); }
-          else {
-            p.flying = true; g.hits++;
-            const pw = rand(8, 11); p.vx = (-dx / d * 0.4 + fx * 0.6) * pw; p.vz = (-dz / d * 0.4 + fz * 0.6) * pw; p.vy = rand(5, 7);
-            p.spin.set(rand(-8, 8), rand(-5, 5), rand(-8, 8)); if (p.inst.current) p.inst.current.timeScale = 0.2;
-            g.shake = 0.3; sfx.thud(); if (Math.random() < 0.6) sfx.bleat(); burst(p.x, 1.3, p.z, 12, "star");
-            addCombo(INSIDE_PTS[p.kind], p.x, 2.6, p.z, p.kind === "esnaf" ? "Esnaf uçtu!" : pick(["TOS!", "BAM!", "Meee!", "Güm!"]), p.kind === "bekci" ? 28 : 14);
-          }
-        } else if (d < 0.9 && p.kind === "bekci") { damage("Bekçi yakaladı!"); p.hitCd = 1; go.speed = -4; }
+        if (go.dashT > 0 && front > 0.1) knockInside(room, p, go, fx, fz, animalId === "aslan" ? pick(dashWords()) : null);
+        else if (d < 0.9 && p.kind === "bekci") { damage("Bekçi yakaladı!"); p.hitCd = 1; go.speed = -4; }
         if (mode !== "play") return;
       }
     }
@@ -1815,6 +2069,7 @@
   }
   function newGame() {
     if (g && g.driving) { scene.add(goat.root); goat.root.scale.setScalar(1); shadowBlob.visible = true; g.driving = null; }
+    if (g) for (const w of g.waves || []) if (w.mesh.parent) w.mesh.parent.remove(w.mesh);
     clearDynamic();
     if (g && g.inside) { iscene.remove(g.inside.group); scene.add(goat.root, shadowBlob); }
     if (ui.room) ui.room.hidden = true;
@@ -1825,7 +2080,7 @@
       t: 0, score: 0, lives: 3, energy: 100, combo: 0, comboT: 0, hits: 0, carHits: 0, dist: 0, inv: 0, shake: 0,
       inside: null, street: null, pendingEnter: null, driving: null, nearCar: null, handbrake: false, hornT: 0, ejectT: 0, carHint: false, driveHint: false, doorHint: false, enterHint: false, insideCount: 0,
       startInfo: st, goat: { x: st.x, z: st.z, y: CURB, vy: 0, yaw: st.yaw, speed: 0, dashT: 0, cd: 0, stun: 0, phase: 0, jumps: 0, slow: 0 },
-      people: [], vehicles: [], animals: [], pickups: [], birds: [], fx: [], spawnT: 0, honkT: 0,
+      people: [], vehicles: [], animals: [], pickups: [], birds: [], fx: [], waves: [], spawnT: 0, honkT: 0,
     };
     camYaw = st.yaw;
     for (const c of chunks.values()) { c.pigeonsDone = false; for (const sp of c.parked) { sp.veh = null; sp.gone = false; } }
@@ -2035,6 +2290,7 @@
     }
   }
   function updateFx(dt) {
+    updateWaves(dt);
     for (let i = g.fx.length - 1; i >= 0; i--) {
       const f = g.fx[i]; f.t += dt;
       if (f.t >= f.life) { if (f.mesh.parent) f.mesh.parent.remove(f.mesh); if (!f.spin) f.mesh.material.dispose(); g.fx.splice(i, 1); continue; }
@@ -2081,8 +2337,8 @@
     if (best && !g.carHint) { g.carHint = true; toast(isTouch ? "Arabaya binmek için BİN tuşuna bas!" : "Arabaya binmek için E tuşuna bas!"); }
   }
   function setDriveUi(on) {
-    $("tosLabel").textContent = on ? "KORNA" : "TOS"; $("tosPad").classList.toggle("small", on);
-    $("jumpLabel").textContent = on ? "FREN" : "ZIPLA";
+    $("tosLabel").textContent = "KORNA"; $("tosPad").classList.add("small"); $("jumpLabel").textContent = "FREN"; $("extraPad").hidden = true;
+    if (!on) applyAnimalUi();
     ui.carPad.textContent = on ? "İN" : "BİN";
     ui.carPad.hidden = !on;
     ui.carChip.hidden = !on;
@@ -2208,9 +2464,10 @@
     if (g.inv > 0 || mode !== "play") return;
     g.lives--; g.inv = 1.6; g.combo = 0; g.shake = 0.5; sfx.hurt(); hurtFlash();
     popText(g.goat.x, g.goat.y + 2.6, g.goat.z, reason, "#2b1d14", 30);
-    if (g.lives <= 0) gameOver("Keçi pes etti!");
+    if (g.lives <= 0) gameOver(A().name + " pes etti!");
   }
-  function knockPerson(p, from, chain) {
+  const dashWords = () => animalId === "aslan" ? ["Isırdı!", "Hart!", "Kıtır!", "Hamm!"] : ["TOS!", "BAM!", "Meee!", "Uçtu!", "Güm!", "Gitti!"];
+  function knockPerson(p, from, chain, word) {
     if (p.flying) return;
     if (p.hp > 1 && !chain) {
       p.hp--; p.flash = 0.3; p.hitCd = 0.45;
@@ -2228,9 +2485,9 @@
     p.vx = bx * pw; p.vz = bz * pw; p.vy = rand(8, 11);
     p.spin.set(rand(-8, 8), rand(-5, 5), rand(-8, 8));
     if (p.inst.current) p.inst.current.timeScale = 0.2;
-    g.shake = 0.3; sfx.thud(); if (Math.random() < 0.65) sfx.bleat();
+    g.shake = 0.3; sfx.thud(); if (Math.random() < 0.65) sfx.voice();
     burst(p.x, 1.3, p.z, 12, "star");
-    addCombo(KINDS[p.kind].pts, p.x, 2.8, p.z, chain ? "Zincir!" : pick(["TOS!", "BAM!", "Meee!", "Uçtu!", "Güm!", "Gitti!"]), p.kind === "bekci" ? 28 : 14);
+    addCombo(KINDS[p.kind].pts, p.x, 2.8, p.z, chain ? "Zincir!" : word || pick(dashWords()), p.kind === "bekci" ? 28 : 14);
   }
   function knockVehicle(v) {
     if (v.state === "wreck") return;
@@ -2271,15 +2528,16 @@
     const up = () => { el.classList.remove("down"); if (el.id === "jumpPad" && g) g.handbrake = false; };
     el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up); el.addEventListener("pointerleave", up);
   }
-  padPress($("tosPad"), () => headbutt()); padPress($("jumpPad"), () => jump());
+  padPress($("tosPad"), () => action(2)); padPress($("jumpPad"), () => action(1)); padPress($("extraPad"), () => action(0));
   function toggleCar() { if (!g || mode !== "play") return; if (g.driving) exitCar(); else if (g.nearCar) boardCar(g.nearCar); }
   padPress($("carPad"), () => toggleCar());
   window.addEventListener("keydown", (ev) => {
     keys[ev.code] = true; if (ev.repeat) return;
     if (mode === "play" && (ev.code === "KeyE" || ev.code === "KeyF")) { ev.preventDefault(); toggleCar(); return; }
     if (mode === "play") {
-      if (ev.code === "Space") { ev.preventDefault(); jump(); }
-      else if (["KeyJ", "KeyX", "Enter", "ShiftLeft"].includes(ev.code)) { ev.preventDefault(); headbutt(); }
+      if (ev.code === "Space") { ev.preventDefault(); action(1); }
+      else if (["KeyJ", "KeyX", "Enter", "ShiftLeft"].includes(ev.code)) { ev.preventDefault(); action(2); }
+      else if (ev.code === "KeyK" || ev.code === "KeyQ") { ev.preventDefault(); action(0); }
       else if (ev.code === "Escape" || ev.code === "KeyP") pause();
     } else if (mode === "pause" && (ev.code === "Escape" || ev.code === "KeyP")) resume();
   });
@@ -2290,14 +2548,14 @@
     if (keys.ArrowUp || keys.KeyW) ky += 1; if (keys.ArrowDown || keys.KeyS) ky -= 1;
     input.jx = clamp(joy.x + kx, -1, 1); input.jy = clamp(joy.y + ky, -1, 1);
   }
-  function jump() { if (g.driving) { g.handbrake = true; return; } const go = g.goat; if (go.jumps < 2 && go.stun <= 0) { go.vy = go.jumps === 0 ? 8.5 : 7; go.jumps++; sfx.jump(); if (go.jumps === 1) burst(go.x, go.y + 0.1, go.z, 6, "dust"); } }
-  function headbutt() { if (g.driving) { horn(); return; } const go = g.goat; if (go.cd <= 0 && go.stun <= 0) { go.dashT = DASH; go.cd = DASH_CD; sfx.dash(); } }
+  function jump() { if (g.driving) { g.handbrake = true; return; } const go = g.goat; if (go.jumps < 2 && go.stun <= 0) { go.vy = (go.jumps === 0 ? 8.5 : 7) * A().jump; go.jumps++; sfx.jump(); if (go.jumps === 1) burst(go.x, go.y + 0.1, go.z, 6, "dust"); } }
+  function headbutt() { if (g.driving) { horn(); return; } const go = g.goat; if (go.cd <= 0 && go.stun <= 0) { go.dashT = DASH; go.cd = DASH_CD; go.cdMax = DASH_CD; sfx.dash(); } }
 
   // ================= Güncelleme =================
   function update(dt) {
     g.t += dt; readInput();
     const go = g.goat;
-    go.cd = Math.max(0, go.cd - dt); go.dashT = Math.max(0, go.dashT - dt); go.stun = Math.max(0, go.stun - dt); go.slow = Math.max(0, go.slow - dt);
+    go.cd = Math.max(0, go.cd - dt); go.roarCd = Math.max(0, (go.roarCd || 0) - dt); go.dashT = Math.max(0, go.dashT - dt); go.stun = Math.max(0, go.stun - dt); go.slow = Math.max(0, go.slow - dt);
     g.inv = Math.max(0, g.inv - dt); g.shake = Math.max(0, g.shake - dt);
     if (g.comboT > 0) { g.comboT -= dt; if (g.comboT <= 0) g.combo = 0; }
 
@@ -2310,7 +2568,7 @@
     // --- keçi hareketi
     go.yaw -= input.jx * (go.dashT > 0 ? 1.2 : 2.5) * dt;
     const base = 6.5 + Math.min(g.t * 0.035, 4.5);
-    let sp = base * (input.jy >= 0 ? 1 + 0.55 * input.jy : 1 + 0.7 * input.jy);
+    let sp = base * A().speed * (input.jy >= 0 ? 1 + 0.55 * input.jy : 1 + 0.7 * input.jy);
     if (go.slow > 0) sp *= 0.55;
     if (go.dashT > 0) sp += 6 + 10 * (go.dashT / DASH);
     if (go.stun > 0) sp = -3 * (go.stun / 0.45);
@@ -2388,7 +2646,7 @@
   function updatePeople(dt, go, fx, fz) {
     for (let i = g.people.length - 1; i >= 0; i--) {
       const p = g.people[i], k = KINDS[p.kind];
-      p.flash = Math.max(0, p.flash - dt); p.hitCd = Math.max(0, p.hitCd - dt);
+      p.flash = Math.max(0, p.flash - dt); p.hitCd = Math.max(0, p.hitCd - dt); p.scared = Math.max(0, (p.scared || 0) - dt);
       p.inst.mixer.update(dt);
       if (p.flying) {
         p.vy -= GRAV * 0.75 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
@@ -2408,9 +2666,9 @@
       }
       const dx = go.x - p.x, dz = go.z - p.z, d = Math.hypot(dx, dz) || 0.01;
       let vx = 0, vz = 0, spd = 0, anim = null, ts = 1;
-      if (p.kind === "bekci" && d < 32 && !g.driving) {
+      if (p.kind === "bekci" && d < 32 && !g.driving && !(p.scared > 0)) {
         p.mode = "chase"; spd = k.chase + Math.min(g.t * 0.01, 1.5); vx = dx / d; vz = dz / d; anim = "run"; ts = 1.1;
-      } else if (p.kind !== "bekci" && d < 9) {
+      } else if ((p.kind !== "bekci" || p.scared > 0) && d < (p.scared > 0 ? 24 : 9)) {
         p.mode = "flee"; p.calm = 3; spd = k.flee; vx = -dx / d; vz = -dz / d; anim = "run"; ts = 1;
       } else if (p.mode === "flee" || p.mode === "free" || p.mode === "chase") {
         p.calm -= dt; p.mode = "free";
@@ -2476,7 +2734,7 @@
         if (v.wreckT <= 0) { v.state = "drive"; v.latPush = 0; v.yawOff = 0; v.speed = 2; }
       } else {
         // önünde keçi / insan / araç varsa fren
-        let target = v.cruise;
+        let target = v.cruise; if (v.scaredT > 0) { v.scaredT -= dt; target = 0; }
         const rel = (px, pz) => [(px - v.x) * ax + (pz - v.z) * az, Math.abs((px - v.x) * az - (pz - v.z) * ax)];
         const [ga, gl] = rel(go.x, go.z);
         if (ga > 0 && ga < 14 && gl < 2.2) { target = Math.min(target, Math.max(0, (ga - 3.5) * 1.2)); if (g.honkT <= 0 && v.honked <= 0) { sfx.honk(); g.honkT = 1.5; v.honked = 4; } }
@@ -2534,7 +2792,7 @@
       const dx = go.x - a.x, dz = go.z - a.z, d = Math.hypot(dx, dz) || 0.01;
       let vx = 0, vz = 0, spd = 0, anim = "survey", ts = 1;
       a.barkT = Math.max(0, a.barkT - dt);
-      if (a.kind === "kopek" && d < 9 && d > 1.6 && !g.driving) { // köpek keçiyi kovalar ve havlar
+      if (a.scared > 0) { a.scared -= dt; spd = 7.5; vx = -dx / d; vz = -dz / d; anim = "run"; } else if (a.kind === "kopek" && d < 9 && d > 1.6 && !g.driving) { // köpek keçiyi kovalar ve havlar
         spd = 6.2; vx = dx / d; vz = dz / d; anim = "run";
         if (a.barkT <= 0) { sfx.bark(); a.barkT = rand(1.2, 2.2); popText(a.x, 1.4, a.z, "Hav hav!", "#2b1d14", 24); }
       } else if (a.kind === "kopek" && d <= 1.6 && !g.driving) {
@@ -2596,7 +2854,7 @@
     const go = g.goat;
     if (g.driving) { // şoför koltuğunda
       const P = VEH_DRIVE[g.driving.kind].seat;
-      goat.root.position.set(P[0], P[1], P[2]); goat.root.rotation.set(0, 0, 0); goat.root.scale.setScalar(P[3]); goat.root.visible = true;
+      goat.root.position.set(P[0], P[1], P[2]); goat.root.rotation.set(0, 0, 0); goat.root.scale.setScalar(P[3] * A().seat); goat.root.visible = true;
       goat.legs.forEach((L) => { L.hip.rotation.x = L.front ? -1.0 : 1.2; L.knee.rotation.x = L.front ? 1.3 : -1.4; });
       goat.neck.rotation.x = 0.1 + Math.sin(g.t * 3) * 0.04; goat.head.rotation.x = 0; goat.body.position.y = 0; goat.body.rotation.x = 0;
       return;
@@ -2618,9 +2876,16 @@
     goat.head.rotation.x += ((dashing ? 0.45 : 0) - goat.head.rotation.x) * damp(20, dt);
     goat.body.rotation.x += ((air ? -0.15 : dashing ? 0.12 : 0) - goat.body.rotation.x) * damp(10, dt);
     goat.tail.rotation.x = -0.5 + Math.sin(go.phase * 2) * 0.35;
+    if (go.anim && go.anim.t > 0) { // pençe, gaga, ısırma, kükreme hareketleri
+      go.anim.t -= dt; const k = Math.sin(Math.PI * Math.max(0, 1 - go.anim.t / go.anim.d));
+      if (go.anim.type === "claw") { goat.legs[1].hip.rotation.x = -1.8 * k; goat.legs[1].knee.rotation.x = 0.7 * k; goat.body.rotation.x = -0.12 * k; }
+      if (go.anim.type === "peck") goat.neck.rotation.x = 1.55 * k;
+      if (go.anim.type === "bite") { goat.neck.rotation.x = 0.35 * k; if (goat.jaw) goat.jaw.rotation.x = 0.7 * k; }
+      if (go.anim.type === "roar") { goat.neck.rotation.x = -0.45 * k; goat.body.rotation.x = -0.12 * k; if (goat.jaw) goat.jaw.rotation.x = 0.85 * k; }
+    } else if (goat.jaw) goat.jaw.rotation.x = 0;
     goat.root.visible = !(g.inv > 0 && Math.floor(g.inv * 12) % 2 === 0);
     shadowBlob.position.set(go.x, floorY(go.x, go.z) + 0.02, go.z);
-    shadowBlob.scale.setScalar(Math.max(0.4, 1 - (go.y - floorY(go.x, go.z)) * 0.15));
+    shadowBlob.scale.setScalar(Math.max(0.4, 1 - (go.y - floorY(go.x, go.z)) * 0.15) * A().shadow);
   }
 
   // Kamera: binaların içine girmemek için çarpışmalı takip kamerası
@@ -2638,9 +2903,10 @@
     if (g.inside && !menu) {
       const room = g.inside;
       camYaw += angDiff(camYaw, go.yaw) * damp(4, dt);
-      const tx = clamp(go.x - Math.sin(camYaw) * 4.2, -room.W / 2 + 0.3, room.W / 2 - 0.3), tz = clamp(go.z - Math.cos(camYaw) * 4.2, 0.3, room.D - 0.3);
+      const ib = 4.2 + A().camUp * 1.6 + (animalId === "aslan" ? 0.8 : 0);
+      const tx = clamp(go.x - Math.sin(camYaw) * ib, -room.W / 2 + 0.3, room.W / 2 - 0.3), tz = clamp(go.z - Math.cos(camYaw) * ib, 0.3, room.D - 0.3);
       camPos.x += (tx - camPos.x) * damp(8, dt); camPos.z += (tz - camPos.z) * damp(8, dt);
-      camPos.y += (Math.min(room.H - 0.35, go.y + 2.4) - camPos.y) * damp(6, dt);
+      camPos.y += (Math.min(room.H - 0.3, go.y + 2.4 + A().camUp) - camPos.y) * damp(6, dt);
       camera.position.copy(camPos);
       if (g.shake > 0) { const s2 = g.shake * 0.3; camera.position.x += rand(-s2, s2); camera.position.y += rand(-s2, s2); }
       camLook.set(go.x + Math.sin(camYaw) * 2, go.y + 0.9, go.z + Math.cos(camYaw) * 2);
@@ -2658,7 +2924,7 @@
       camera.position.copy(camPos);
     } else {
       camYaw += angDiff(camYaw, go.yaw) * damp(4, dt);
-      const back = g.driving ? Math.min(14, 6 + g.driving.L * 0.8) : 7.4, up = g.driving ? 3 + g.driving.H * 0.95 : 4.0;
+      const back = g.driving ? Math.min(14, 6 + g.driving.L * 0.8) : 7.4, up = g.driving ? 3 + g.driving.H * 0.95 : 4.0 + A().camUp;
       let tx = go.x - Math.sin(camYaw) * back, tz = go.z - Math.cos(camYaw) * back;
       let tmin = 1;
       for (const c of collidersNear(go.x, go.z)) if (c.box) tmin = Math.min(tmin, rayBoxT(go.x, go.z, tx - go.x, tz - go.z, c));
@@ -2689,7 +2955,7 @@
       ui.mult.hidden = mult < 2; ui.mult.textContent = "x" + mult;
       ui.energy.style.transform = `scaleX(${e / 100})`; ui.energyBar.classList.toggle("low", e < 25);
     }
-    ui.tosRing.setAttribute("stroke-dashoffset", String(g.driving ? 0 : Math.round((g.goat.cd / DASH_CD) * 100)));
+    ui.tosRing.setAttribute("stroke-dashoffset", String(g.driving ? 0 : Math.round((g.goat.cd / (g.goat.cdMax || DASH_CD)) * 100))); $("extraPad").classList.toggle("cool", (g.goat.roarCd || 0) > 0);
     if (g.driving) { ui.carSpeed.textContent = Math.round(Math.abs(g.driving.speed) * 3.6); ui.carHp.style.transform = `scaleX(${Math.max(0, g.driving.hp) / VEH_DRIVE[g.driving.kind].hp})`; }
     drawMinimap();
   }
@@ -2779,7 +3045,8 @@
   }
   function pause() { if (mode === "play") { mode = "pause"; only("paused"); } }
   function resume() { if (mode === "pause") { mode = "play"; only(null); } }
-  $("playBtn").addEventListener("click", start); $("againBtn").addEventListener("click", start);
+  $("playBtn").addEventListener("click", start);
+  document.querySelectorAll("#animalPick button").forEach((b) => b.addEventListener("click", () => { useAnimal(b.dataset.animal); audio(); sfx.voice(); })); $("againBtn").addEventListener("click", start);
   $("howBtn").addEventListener("click", () => only("how")); $("howClose").addEventListener("click", () => only("menu"));
   $("soundBtn").addEventListener("click", toggleSound); $("pauseSoundBtn").addEventListener("click", toggleSound);
   $("resumeBtn").addEventListener("click", resume); $("quitBtn").addEventListener("click", toMenu); $("overMenuBtn").addEventListener("click", toMenu);
@@ -2826,7 +3093,7 @@
 
   // ================= Başlat =================
   resize(); refreshSoundLabels();
-  goat = buildGoat(); goat.root.traverse((o) => { if (o.isMesh) o.castShadow = true; }); scene.add(goat.root);
+  useAnimal(animalId);
   shadowBlob = new T.Mesh(new T.CircleGeometry(0.7, 20), new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, depthWrite: false }));
   shadowBlob.rotation.x = -Math.PI / 2; scene.add(shadowBlob);
   Promise.all([loadModels(), loadEnv()]).then(() => {
@@ -2834,7 +3101,7 @@
     loadingText.textContent = "Şehir kuruluyor…";
     setTimeout(() => {
       toMenu();
-      if (location.hash === "#test") window.__k = { get g() { return g; }, toggleCar, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
+      if (location.hash === "#test") window.__k = { get g() { return g; }, action, useAnimal, get goat() { return goat; }, toggleCar, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
       requestAnimationFrame((t) => { last = t; frame(t); });
     }, 30);
   }).catch((e) => { loadingText.textContent = "Bir dosya yüklenemedi (" + e.message + "). Sayfayı yenile."; console.error(e); });

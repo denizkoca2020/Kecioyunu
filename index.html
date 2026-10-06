@@ -81,7 +81,7 @@ body {
 }
 .pads {
   position: fixed; z-index: 2; right: calc(var(--safe-r) + 26px); bottom: calc(var(--safe-b) + 26px);
-  display: grid; grid-template-columns: auto auto; align-items: end; gap: 18px;
+  display: flex; align-items: flex-end; gap: 16px;
 }
 .pad {
   border: 4px solid var(--ink); border-radius: 50%; display: grid; place-items: center; cursor: pointer;
@@ -119,6 +119,20 @@ body {
 @media (max-height: 560px) { #carPad { bottom: calc(var(--safe-b) + 146px); width: 96px; height: 54px; font-size: 24px; } }
 #jumpPad span, #tosPad span { pointer-events: none; }
 #tosPad.small { font-size: 24px; }
+#jumpPad.small { font-size: 17px; }
+#extraPad { width: 88px; height: 88px; font-size: 19px; background: #6a3d9a; color: var(--cream); }
+#extraPad.cool { opacity: 0.45; }
+#extraPad span { pointer-events: none; }
+.pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; }
+.pick button {
+  font-family: var(--font-body); cursor: pointer; border: 3px solid var(--ink); border-radius: 14px; background: var(--cream); color: var(--ink);
+  padding: 8px 6px; display: grid; gap: 2px; box-shadow: 0 4px 0 var(--ink); touch-action: manipulation;
+}
+.pick button b { font-family: var(--font-display); font-weight: 400; font-size: 22px; }
+.pick button span { font-size: 12px; font-weight: 800; line-height: 1.25; }
+.pick button[aria-pressed="true"] { background: var(--red); color: var(--cream); }
+.pick button:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
+.pick-title { font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; font-size: 13px; opacity: 0.75; }
 #roomChip small { opacity: 0.85; }
 .flash { position: fixed; inset: 0; z-index: 2; pointer-events: none; background: #d6402b; opacity: 0; transition: opacity 0.35s; }
 
@@ -205,6 +219,7 @@ body {
 <div class="joy idle" id="joy" hidden><span id="knob"></span></div>
 <button class="pad" id="carPad" aria-label="Arabaya bin" hidden>BİN</button>
 <div class="pads" id="pads" hidden>
+  <button class="pad" id="extraPad" aria-label="Özel yetenek" hidden><span id="extraLabel">KÜKRE</span></button>
   <button class="pad" id="jumpPad" aria-label="Zıpla"><span id="jumpLabel">ZIPLA</span></button>
   <button class="pad" id="tosPad" aria-label="Tosla"><span id="tosLabel">TOS</span><svg viewBox="0 0 100 100" aria-hidden="true"><circle id="tosRing" cx="50" cy="50" r="46" pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="0"></circle></svg></button>
 </div>
@@ -216,6 +231,12 @@ body {
     <h1>Keçi Oyunu</h1>
     <div class="tagline">Şehrin en dik başlı keçisi</div>
     <p>Keçi şehre indi. Caddelerde istediğin yöne koş, yayalara ve arabalara tosla. Bekçilerden ve trafikten sakın, enerjin bitmesin.</p>
+    <div class="pick-title">Hayvanını seç</div>
+    <div class="pick" id="animalPick" role="group" aria-label="Hayvan seç">
+      <button data-animal="keci" aria-pressed="true"><b>Keçi</b><span>Tos · Zıpla</span></button>
+      <button data-animal="aslan" aria-pressed="false"><b>Aslan</b><span>Kükre · Isır · Pençe</span></button>
+      <button data-animal="devekusu" aria-pressed="false"><b>Deve kuşu</b><span>Gagala · Zıpla · Çok hızlı</span></button>
+    </div>
     <div class="best-line">Rekor: <span id="menuBest">0</span></div>
     <div class="menu-btns">
       <button class="btn" id="playBtn">Oyna</button>
@@ -234,6 +255,7 @@ body {
       <div class="rule"><b>ZIPLA</b><span>Çöp kutularının, babaların ve bariyerlerin üstünden atla.</span></div>
       <div class="rule"><b>Puan</b><span>Yaya 10, koşucu 20, bekçi 40. Araba 25, taksi 30, kamyon 45, otobüs 60. Art arda toslarsan kombo x5'e kadar çıkar.</span></div>
       <div class="rule"><b>Tehlike</b><span>Hareket eden araç çarparsa can gider. Bekçiler kovalar ve yakalarsa can götürür; onlara iki kez toslamak gerekir. Sokak köpekleri havlayıp seni yavaşlatır.</span></div>
+      <div class="rule"><b>Hayvanlar</b><span>Menüden hayvanını seç. Keçi toslar ve zıplar. Aslan KÜKRE ile herkesi korkutup yakındakileri yere serer, ISIR ile ileri atılır, PENÇE ile önündekileri savurur. Deve kuşu GAGALA ile hızlı gagalar, çok hızlı koşar ve yüksek zıplar.</span></div>
       <div class="rule"><b>Araba</b><span>Duran ya da yavaşlamış bir arabanın yanına git, BİN tuşuna bas. Joystick gaz ve direksiyon; FREN, KORNA ve İN tuşları var. Arabadayken bekçiler ve köpekler seni yakalayamaz. Çok çarparsan araba hurdaya döner.</span></div>
       <div class="rule"><b>Kapılar</b><span>Binaların kapısına tosla. Cam kapı tek darbede, tahta kapı iki darbede kırılır. Kırık kapıdan koşarak içeri gir, çıkmak için kapıya geri koş.</span></div>
       <div class="rule"><b>İçeride</b><span>Rafları devir, aynaları ve camları kır, masaları uçur, televizyonu patlat, ekmek ve simit ye, esnafı kovala. Her şeyi dağıtırsan +100. Biraz sonra bekçi gelir!</span></div>

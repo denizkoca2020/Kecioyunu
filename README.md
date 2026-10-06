@@ -20,6 +20,18 @@ iPad için 3B sonsuz koşu oyunu. Keçi şehre iniyor: caddelerde istediğin yö
 - İnsanlar kaldırımlarda yürür, keçiyi görünce kaçar. Meydanlarda sokak dansçısı samba yapar. Bekçiler keçiyi kovalar; ilk 25 saniye bekçi çıkmaz, sonra aynı anda en fazla 2 (3 dakikadan sonra 3) bekçi olur.
 - Hayvanlar (aynı anda en fazla 2 köpek/kedi): sokak köpekleri yakına gelince havlayıp peşinden koşar, kediler kaçar, güvercinler havalanır, leylekler tepede süzülür.
 
+## Hayvanını seç
+
+Menüden oynayacağın hayvanı seç (seçim cihazda hatırlanır):
+
+| Hayvan | Tuşlar | Özellik |
+|---|---|---|
+| **Keçi** | ZIPLA · TOS | Toslayıp ileri atılır, çift zıplar |
+| **Aslan** | KÜKRE · ISIR · PENÇE | KÜKRE: herkes korkup kaçar, yakındakiler yere serilir, arabalar durur, camlar çatlar (6 sn bekleme). ISIR: ileri sıçrayıp ısırır. PENÇE: önündeki geniş alana pençe savurur. Biraz daha hızlı |
+| **Deve kuşu** | ZIPLA · GAGALA | Uzun boynuyla seri gagalar, çok hızlı koşar, yüksek zıplar |
+
+Her hayvan kapı kırabilir, iç mekânlara girebilir ve araba kullanabilir. Klavyede: `Boşluk` orta tuş, `J`/`X` büyük tuş, `K`/`Q` aslanın KÜKRE tuşu.
+
 ## Her oyun farklı
 
 - Her yeni oyun şehrin rastgele bir yerinde başlar: saat kuleli bir meydanda, bir parkta ya da bir caddede. Başlangıçta semt adı, yer ve saat yazar (ör. "Kadıköy · Park · Sabah").
