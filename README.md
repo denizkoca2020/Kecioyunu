@@ -49,6 +49,14 @@ Her hayvan kapı kırabilir, iç mekânlara girebilir ve araba kullanabilir. Kla
 - Hızla çarptığın araçlar savrulur (puan), yayalar havaya uçar. Duvara ve araçlara çarpınca araba hasar alır; hasar artınca kaputtan duman çıkar, hurdaya dönünce keçi dışarı atlar.
 - İndiğin araba olduğu yerde kalır; istersen tekrar binebilirsin.
 
+## Raylı sistemler
+
+- **Tren:** bazı blok sıraları iki hatlı demiryolu koridorudur (balast, traversler, raylar, katener, çitler). Beyaz-kırmızı **banliyö trenleri** ve renkli konteynerli **yük trenleri** iki yönde geçer. Tren, rayda keçiyi görünce korna çalar; çarparsa can gider.
+- **Hemzemin geçitler:** caddelerin demiryolunu kestiği yerlerde tren yaklaşınca kırmızı-beyaz bariyerler iner, ışıklar yanıp söner, zil çalar; arabalar bariyerde durur.
+- **Tramvay:** bazı caddelerin ortasında gömülü raylar ve katener telleri vardır; bu caddelerde araba trafiği yoktur. Kırmızı-beyaz körüklü **T1 tramvayları** her blok ortasındaki durakta durur, önüne çıkınca zil çalıp fren yapar. Hareket eden tramvay çarparsa can gider; duran tramvaya toslamak +20 puan.
+- **Metro:** bazı caddelerin üstünde sütunlara oturan yükseltilmiş viyadük vardır. Gümüş-mavi **M2 metro trenleri** üstten geçer ve büyük **M** tabelalı, merdiven kuleli istasyonlarda durur.
+- Mini haritada demiryolu kahverengi, tramvay kırmızı, metro mavi çizgiyle gösterilir.
+
 ## Kapılar ve iç mekânlar
 
 - Her binanın sokağa bakan bir kapısı var (mini haritada kırmızı nokta). Dükkânlarda cam kapı, apartmanlarda tahta kapı.

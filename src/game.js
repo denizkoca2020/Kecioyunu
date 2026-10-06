@@ -63,6 +63,9 @@
     chomp() { tone("square", 260, 120, 0.08, 0.1); noise(0.08, 0.15, 1500); },
     swipe() { noise(0.2, 0.22, 3000); },
     peck() { tone("sine", 1400, 900, 0.05, 0.1); },
+    bell() { tone("sine", 1250, 1200, 0.25, 0.08); tone("sine", 1000, 980, 0.25, 0.06, 0.3); },
+    tramBell() { tone("triangle", 1500, 1480, 0.18, 0.1); tone("triangle", 1500, 1480, 0.18, 0.1, 0.22); },
+    trainHorn() { tone("sawtooth", 220, 215, 1.1, 0.07); tone("sawtooth", 277, 272, 1.1, 0.06); tone("sawtooth", 330, 326, 1.1, 0.04); },
     thud() { tone("triangle", 190, 45, 0.2, 0.32); noise(0.12, 0.2, 500); },
     crash() { noise(0.45, 0.35, 2500); tone("square", 140, 60, 0.3, 0.08); },
     alarm() { for (let i = 0; i < 6; i++) tone("square", i % 2 ? 900 : 700, i % 2 ? 900 : 700, 0.14, 0.05, i * 0.16); },
@@ -367,6 +370,7 @@
   const key = (cx, cz) => cx + "," + cz;
   function cellType(cx, cz) {
     if (Math.abs(cx) <= 0 && Math.abs(cz) <= 0) return "square"; // başlangıç meydanı
+    if (((cz % 7) + 7) % 7 === 3) return "rail"; // demiryolu koridoru
     const r = rng((cx * 92837111) ^ (cz * 689287499) ^ 42)();
     if (r < 0.1) return "park";
     if (r < 0.15) return "square";
@@ -561,6 +565,7 @@
       const len = Math.hypot(e.b[0] - e.a[0], e.b[1] - e.a[1]);
       for (let s = 6; s < len - 4; s += 14) {
         const t = s / len, x = e.a[0] + (e.b[0] - e.a[0]) * t, z = e.a[1] + (e.b[1] - e.a[1]) * t;
+        if (type === "rail" && Math.abs(z - (oz + CELL / 2)) < 7.5) continue; // raylar kaldırımdan geçer
         addLamp(b, cols, x, z, e.face);
         const t2 = (s + 7) / len;
         if (t2 < 0.95) {
@@ -575,7 +580,7 @@
     }
     addTrafficLight(b, cols, bx0 + 0.5, bz0 + 0.5, Math.PI * 1.25);
     addTrafficLight(b, cols, bx1 - 0.5, bz1 - 0.5, Math.PI * 0.25);
-    if (r() < 0.5) addBusStop(b, cols, bx0 + 2.2, cm - ox + oz + 10, Math.PI / 2 * 3 + Math.PI);
+    if (r() < 0.5 && type !== "rail" && !isTramLine(cx)) addBusStop(b, cols, bx0 + 2.2, cm - ox + oz + 10, Math.PI / 2 * 3 + Math.PI);
     // park edilmiş arabalar (park şeridi)
     // park edilmiş arabalar: keçi yaklaşınca binilebilir gerçek araçlara dönüşür
     const parked = [];
@@ -587,6 +592,7 @@
     // cadde kenarları: iki tarafta sık ve rastgele
     const jit = () => (r() - 0.5) * 0.06;
     for (let s = oz + ROAD + 9; s < oz + CELL - ROAD - 7; s += 5.4 + r() * 0.8) {
+      if (isTramLine(cx) || (type === "rail" && Math.abs(s - (oz + CELL / 2)) < 10)) continue; // tramvay caddesi ve hemzemin geçit
       if (r() < 0.72) parkSpot(ox + PARK_LANE + (r() - 0.5) * 0.25, s, Math.PI + jit());
       if (r() < 0.72) parkSpot(ox - PARK_LANE + (r() - 0.5) * 0.25, s + 1.3, jit());
     }
@@ -636,6 +642,7 @@
       for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + 0.4; addBench(b, cols, cm + Math.sin(a) * 6, pz + Math.cos(a) * 6, a + Math.PI); }
       spawns.pigeons.push([cm + 5, pz - 4], [cm - 5, pz + 5]);
       if (r() < 0.6) addSimitCart(b, cols, cm + 9, pz - 9, 0.6);
+    } else if (type === "rail") { // demiryolu koridoru: içerik addRailInfra'da
     } else { // meydan: saat kulesi
       const pz = cm - ox + oz;
       b.add(planeUV(ix1 - ix0, iz1 - iz0, 3, 3), MAT.plaza, cm, CURB + 0.01, pz, 1, 1, 1, 0, 0, 0, false);
@@ -653,10 +660,11 @@
       for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2 + 0.2; addTree(b, cols, cm + Math.sin(a) * 15, pz + Math.cos(a) * 15, r, true); }
       spawns.pigeons.push([cm + 5, pz + 4], [cm - 4, pz - 5], [cm + 3, pz - 6]);
     }
+    const crossing = addRailInfra(b, cols, r, cx, cz, type, group);
     b.build(group);
     for (const d of doors) group.add(d.group);
     scene.add(group);
-    chunks.set(key(cx, cz), { group, cols, cx, cz, type, spawns, pigeonsDone: false, doors, parked });
+    chunks.set(key(cx, cz), { group, cols, cx, cz, type, spawns, pigeonsDone: false, doors, parked, crossing });
   }
   function unloadChunk(k, c) {
     scene.remove(c.group);
@@ -1168,7 +1176,7 @@
     } else {
       for (const p of g.people) if (!p.flying && inCone(go, fx, fz, p.x, p.z, range, cone) && Math.abs(p.y - go.y) < 1.6) { knockPerson(p, go, false, pick(words)); n++; }
       for (const v of g.vehicles) {
-        if (v.state === "player" || v.state === "wreck" || v.hitCd > 0) continue;
+        if (v.state === "player" || v.state === "wreck" || v.hitCd > 0 || v.rail) continue;
         const [la, ll] = carLocal(v, go.x, go.z);
         if (Math.hypot(Math.max(0, Math.abs(la) - v.L / 2), Math.max(0, Math.abs(ll) - v.W / 2)) < range - 0.8 && inCone(go, fx, fz, v.x, v.z, range, 1.2, v.L / 2)) { knockVehicle(v); v.hitCd = 1.2; n++; }
       }
@@ -2238,7 +2246,7 @@
 
   function clearDynamic() {
     if (!g) return;
-    for (const list of [g.people, g.vehicles, g.animals, g.pickups, g.birds]) for (const o of list) scene.remove(o.root || o.m.root);
+    for (const list of [g.people, g.vehicles, g.animals, g.pickups, g.birds, g.metros || []]) for (const o of list) scene.remove(o.root || o.m.root);
     for (const s of g.fx) scene.remove(s.mesh);
   }
   function newGame() {
@@ -2254,7 +2262,7 @@
       t: 0, score: 0, lives: 3, energy: 100, combo: 0, comboT: 0, hits: 0, carHits: 0, dist: 0, inv: 0, shake: 0,
       inside: null, street: null, stairHint: false, pendingEnter: null, driving: null, nearCar: null, handbrake: false, hornT: 0, ejectT: 0, carHint: false, driveHint: false, doorHint: false, enterHint: false, insideCount: 0,
       startInfo: st, goat: { x: st.x, z: st.z, y: CURB, vy: 0, yaw: st.yaw, speed: 0, dashT: 0, cd: 0, stun: 0, phase: 0, jumps: 0, slow: 0 },
-      people: [], vehicles: [], animals: [], pickups: [], birds: [], fx: [], waves: [], spawnT: 0, honkT: 0,
+      people: [], vehicles: [], animals: [], pickups: [], birds: [], fx: [], waves: [], metros: [], spawnT: 0, honkT: 0,
     };
     camYaw = st.yaw;
     for (const c of chunks.values()) { c.pigeonsDone = false; for (const sp of c.parked) { sp.veh = null; sp.gone = false; } }
@@ -2322,6 +2330,7 @@
     const [cx, cz] = randomCellNear(initial ? 8 : 40, initial ? 45 : 70);
     const inset = rand(1.6, 3.2), s = rand(0, 400), dir = Math.random() < 0.5 ? 1 : -1;
     const [x, z] = sidewalkPoint(cx, cz, s, inset);
+    if (cellType(cx, cz) === "rail") return;
     if (blockedAt(x, z, 0.4)) return;
     if (Math.hypot(x - g.goat.x, z - g.goat.z) < 7) return;
     const model = realModel(kind === "bekci" ? "guard" : "woman");
@@ -2339,6 +2348,7 @@
     const axis = Math.random() < 0.5 ? "x" : "z";
     const dir = Math.random() < 0.5 ? 1 : -1;
     const lineIdx = Math.round((axis === "z" ? go.x : go.z) / CELL) + Math.floor(rand(-1, 2));
+    if (axis === "z" && isTramLine(lineIdx)) return; // tramvay caddesinde araba yok
     const along0 = axis === "z" ? go.z : go.x;
     const along = along0 + (Math.random() < 0.7 ? 1 : -1) * rand(initial ? 30 : 55, initial ? 90 : 110);
     const lat = lineIdx * CELL + (axis === "z" ? -dir : dir) * LANE;
@@ -2403,6 +2413,291 @@
       g.vehicles.push(v); sp.veh = v;
     }
   }
+  // ================= Raylı sistemler: tren, tramvay, metro =================
+  // Demiryolu: bazı blok sıraları (x boyunca iki hat). Tramvay: bazı z-caddelerinin ortasında gömülü raylar.
+  // Metro: bazı x-caddelerinin üstünde yükseltilmiş viyadük.
+  const mod = (a, n) => ((a % n) + n) % n;
+  const isRailRow = (cz) => mod(cz, 7) === 3;
+  const isTramLine = (k) => mod(k, 5) === 1; // x = k*64 caddesi
+  const isMetroLine = (k) => mod(k, 6) === 4; // z = k*64 caddesi
+  const RAIL_OFF = 2.5, METRO_Y = 9.25, METRO_OFF = 1.8;
+  const RMAT = {
+    ballast: (() => { const [c, x] = cv(128, 128), r = rng(61); x.fillStyle = "#8a8378"; x.fillRect(0, 0, 128, 128); speckle(x, 128, 128, 5000, ["#6f6a62", "#a39b8f", "#7b746b", "#5c5852"], r, [1, 3]); return new T.MeshStandardMaterial({ map: tex(c), roughness: 1 }); })(),
+    sleeper: new T.MeshStandardMaterial({ color: 0x8e8a84, roughness: 0.9 }),
+    rail: new T.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.3, metalness: 0.9 }),
+    tramBand: new T.MeshStandardMaterial({ color: 0x9c9890, roughness: 0.85 }),
+    concrete: new T.MeshStandardMaterial({ color: 0xc8c3b8, roughness: 0.85 }),
+    concreteDark: new T.MeshStandardMaterial({ color: 0x8f8a80, roughness: 0.9 }),
+    fence: new T.MeshStandardMaterial({ color: 0x3f6b4a, roughness: 0.6, metalness: 0.4 }),
+    pole: new T.MeshStandardMaterial({ color: 0x6e7378, roughness: 0.5, metalness: 0.6 }),
+    wire: new T.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.6 }),
+    armRed: new T.MeshStandardMaterial({ color: 0xd32f2f, roughness: 0.5 }),
+    armWhite: new T.MeshStandardMaterial({ color: 0xf4f4f4, roughness: 0.5 }),
+    lampOn: new T.MeshStandardMaterial({ color: 0xff3b2a, emissive: 0xff2010, roughness: 0.3 }),
+    lampOff: new T.MeshStandardMaterial({ color: 0x401010, roughness: 0.3 }),
+    metroBlue: new T.MeshStandardMaterial({ color: 0x1565c0, roughness: 0.4 }),
+  };
+  const signTex = (text, bg, fg, w = 256, h = 64, size = 34) => { const [c, x] = cv(w, h); x.fillStyle = bg; x.fillRect(0, 0, w, h); x.fillStyle = fg; x.font = `bold ${size}px Arial`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(text, w / 2, h / 2 + 2); return new T.MeshStandardMaterial({ map: tex(c, true, false), emissive: 0x222222, roughness: 0.4 }); };
+  const RSIGN = {
+    metroM: (() => { const [c, x] = cv(128, 128); x.fillStyle = "#1565c0"; x.fillRect(0, 0, 128, 128); x.fillStyle = "#fff"; x.font = "bold 100px Arial"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("M", 64, 70); return new T.MeshStandardMaterial({ map: tex(c, true, false), emissive: 0x0a2a5a, roughness: 0.4 }); })(),
+    tramT: signTex("T1  TRAMVAY", "#c62828", "#fff"),
+    banliyo: signTex("BANLİYÖ", "#111", "#ffb300", 256, 48, 30),
+    metroDest: signTex("M2 MERKEZ", "#111", "#ffb300", 256, 48, 30),
+    tramDest: signTex("T1 SAHİL", "#111", "#ffb300", 256, 48, 30),
+    freight: signTex("YÜK", "#111", "#ffb300", 256, 48, 30),
+  };
+
+  // --- şehir parçasına raylı altyapı ekler (loadChunk çağırır)
+  function addRailInfra(b, cols, r, cx, cz, type, group) {
+    const ox = cx * CELL, oz = cz * CELL, bx0 = ox + ROAD, bx1 = ox + CELL - ROAD;
+    let crossing = null;
+    if (type === "rail") {
+      const zc = oz + CELL / 2;
+      // balast yatağı (yolun karşısına geçen kısım dahil), traversler, raylar
+      b.add(GEO.box, RMAT.ballast, ox + CELL / 2, CURB + 0.06, zc, CELL - 2 * ROAD, 0.12, 9.5, 0, 0, 0, false);
+      b.add(GEO.box, RMAT.concreteDark, ox, 0.03, zc, ROAD * 2, 0.06, 9.5, 0, 0, 0, false); // hemzemin geçit paneli
+      for (const tz of [zc - RAIL_OFF, zc + RAIL_OFF]) {
+        for (let x = ox - ROAD + 0.3; x < ox + CELL - ROAD; x += 0.65) if (x > bx0 - 0.1 || true) b.add(GEO.box, RMAT.sleeper, x, x > ox - ROAD && x < ox + ROAD ? 0.06 : CURB + 0.14, tz, 0.24, 0.1, 2.6, 0, 0, 0, false);
+        for (const s of [-0.72, 0.72]) b.add(GEO.box, RMAT.rail, ox + CELL / 2, CURB + 0.24, tz + s, CELL - 2 * ROAD, 0.12, 0.08, 0, 0, 0, false);
+        for (const s of [-0.72, 0.72]) b.add(GEO.box, RMAT.rail, ox, 0.08, tz + s, ROAD * 2, 0.06, 0.08, 0, 0, 0, false);
+      }
+      // çimenli şevler ve çit (yaya geçişi geçitten)
+      for (const sz of [-1, 1]) {
+        b.add(GEO.box, MAT.grass, ox + CELL / 2, CURB + 0.02, zc + sz * 10.5, CELL - 2 * ROAD - 2 * WALK, 0.04, 11.5, 0, 0, 0, false);
+        const fz = zc + sz * 6.2;
+        for (let x = bx0 + WALK; x <= bx1 - WALK + 0.01; x += 2.5) b.add(GEO.box, RMAT.fence, x, CURB + 0.75, fz, 0.06, 1.5, 0.06);
+        for (const y of [0.5, 1.0, 1.45]) b.add(GEO.box, RMAT.fence, ox + CELL / 2, CURB + y, fz, CELL - 2 * ROAD - 2 * WALK, 0.05, 0.03, 0, 0, 0, false);
+        cols.push({ box: true, x0: bx0 + WALK, x1: bx1 - WALK, z0: fz - 0.1, z1: fz + 0.1, h: 1.6, solid: true });
+      }
+      // katener direkleri ve telleri
+      for (let x = ox + 12; x < ox + CELL; x += 26) {
+        for (const sz of [-1, 1]) { b.add(GEO.cyl8, RMAT.pole, x, CURB + 3.5, zc + sz * 5, 0.12, 7, 0.12); cols.push({ x, z: zc + sz * 5, r: 0.25, solid: true }); }
+        b.add(GEO.box, RMAT.pole, x, CURB + 6.8, zc, 0.12, 0.12, 10.4);
+      }
+      for (const tz of [zc - RAIL_OFF, zc + RAIL_OFF]) b.add(GEO.box, RMAT.wire, ox + CELL / 2, CURB + 6.3, tz, CELL, 0.03, 0.03, 0, 0, 0, false);
+      // hemzemin geçit bariyerleri (hareketli)
+      const arms = [], lamps = [];
+      for (const [px, sz, dirx] of [[ox + ROAD + 0.4, -1, -1], [ox - ROAD - 0.4, 1, 1], [ox + ROAD + 0.4, 1, -1], [ox - ROAD - 0.4, -1, 1]]) {
+        const pzz = zc + sz * 5.3;
+        b.add(GEO.box, RMAT.armWhite, px, 0.8, pzz, 0.25, 1.6, 0.25);
+        cols.push({ x: px, z: pzz, r: 0.3, solid: true });
+        const pv = new T.Group(); pv.position.set(px, 1.25, pzz); group.add(pv);
+        for (let i = 0; i < 6; i++) { const seg = new T.Mesh(GEO.box, i % 2 ? RMAT.armWhite : RMAT.armRed); seg.scale.set(0.95, 0.12, 0.1); seg.position.set(dirx * (0.6 + i * 0.95), 0, 0); seg.castShadow = true; pv.add(seg); }
+        pv.rotation.z = dirx * -1.35; arms.push({ pv, dirx });
+        const post = new T.Group(); post.position.set(px, 2.1, pzz); group.add(post);
+        const back = new T.Mesh(GEO.box, MAT.darkMetal); back.scale.set(0.8, 0.35, 0.08); post.add(back);
+        for (const s of [-0.22, 0.22]) { const l = new T.Mesh(GEO.sphere, RMAT.lampOff); l.scale.set(0.11, 0.11, 0.05); l.position.set(s, 0, sz * -0.06); post.add(l); lamps.push(l); }
+        const cross = new T.Mesh(GEO.box, RMAT.armWhite); cross.scale.set(0.9, 0.12, 0.03); cross.position.set(0, 0.5, 0); cross.rotation.z = 0.6; post.add(cross);
+        const cross2 = cross.clone(); cross2.rotation.z = -0.6; post.add(cross2);
+      }
+      crossing = { x: ox, zc, arms, lamps, down: 0, target: 0, t: 0 };
+    }
+    if (isTramLine(cx)) { // bu hücrenin batı caddesi tramvay hattı
+      for (const tx of [ox - LANE, ox + LANE]) {
+        b.add(GEO.box, RMAT.tramBand, tx, 0.008, oz + CELL / 2, 2.4, 0.016, CELL, 0, 0, 0, false);
+        for (const s of [-0.72, 0.72]) b.add(GEO.box, RMAT.rail, tx + s, 0.02, oz + CELL / 2, 0.07, 0.025, CELL, 0, 0, 0, false);
+        b.add(GEO.box, RMAT.wire, tx, 5.9, oz + CELL / 2, 0.03, 0.03, CELL, 0, 0, 0, false);
+      }
+      for (let z = oz + 14; z < oz + CELL - 6; z += 18) {
+        for (const sx of [-1, 1]) { b.add(GEO.cyl8, RMAT.pole, ox + sx * 5.2, 3.1, z, 0.1, 6.2, 0.1); cols.push({ x: ox + sx * 5.2, z, r: 0.22, solid: true }); }
+        b.add(GEO.box, RMAT.pole, ox, 6.1, z, 10.4, 0.08, 0.08);
+      }
+      // durak (her iki kaldırımda): sundurma ve T1 tabelası
+      for (const sx of [1, -1]) {
+        const x = ox + sx * (ROAD + 1.6), z = oz + CELL / 2;
+        b.add(GEO.box, MAT.darkMetal, x, 2.55, z, 1.6, 0.1, 5);
+        b.add(GEO.box, MAT.glass, x + sx * 0.75, 1.3, z, 0.04, 2.2, 4.6, 0, 0, 0, false);
+        b.add(GEO.cyl8, MAT.darkMetal, x - sx * 0.6, 1.6, z + 2.8, 0.05, 3.2, 0.05);
+        b.add(new T.PlaneGeometry(1.4, 0.35), RSIGN.tramT, x - sx * 0.6, 3.05, z + 2.8, 1, 1, 1, sx > 0 ? -Math.PI / 2 : Math.PI / 2, 0, 0, false);
+        cols.push({ box: true, x0: x - 0.85, x1: x + 0.85, z0: z - 2.5, z1: z + 2.5, h: 2.6, solid: true });
+      }
+    }
+    if (isMetroLine(cz)) { // bu hücrenin güney caddesi üstünde metro viyadüğü
+      const z = oz, x0 = ox, xm = ox + CELL / 2;
+      b.add(GEO.box, RMAT.concrete, xm, METRO_Y - 0.75, z, CELL, 1.3, 7.6);
+      for (const s of [-1, 1]) b.add(GEO.box, RMAT.concrete, xm, METRO_Y + 0.45, z + s * 3.6, CELL, 0.9, 0.3);
+      b.add(GEO.box, RMAT.ballast, xm, METRO_Y - 0.08, z, CELL, 0.04, 7.0, 0, 0, 0, false);
+      for (const tz of [z - METRO_OFF, z + METRO_OFF]) for (const s of [-0.72, 0.72]) b.add(GEO.box, RMAT.rail, xm, METRO_Y, tz + s, CELL, 0.1, 0.08, 0, 0, 0, false);
+      for (const px of [x0 + 16, x0 + 48]) { b.add(GEO.cyl, RMAT.concrete, px, (METRO_Y - 1.4) / 2, z, 0.75, METRO_Y - 1.4, 0.75); b.add(GEO.box, RMAT.concrete, px, METRO_Y - 1.5, z, 1.4, 0.4, 5); cols.push({ x: px, z, r: 0.85, solid: true }); }
+      if (mod(cx, 3) === 1) { // istasyon: geniş peron, çatı, merdiven kuleleri, büyük M
+        for (const s of [-1, 1]) {
+          b.add(GEO.box, RMAT.concrete, xm, METRO_Y - 0.2, z + s * 4.8, 26, 0.4, 2.6);
+          for (let px = xm - 12; px <= xm + 12; px += 6) b.add(GEO.cyl8, MAT.darkMetal, px, METRO_Y + 1.8, z + s * 5.8, 0.08, 3.8, 0.08);
+          // sokaktan perona merdiven kulesi
+          const tz = z + s * 8.2;
+          b.add(GEO.box, RMAT.concrete, xm, METRO_Y / 2, tz, 4, METRO_Y, 2.4);
+          b.add(GEO.box, MAT.glass, xm, METRO_Y / 2, tz + s * 1.22, 3.6, METRO_Y - 1, 0.04, 0, 0, 0, false);
+          b.add(new T.PlaneGeometry(1.4, 1.4), RSIGN.metroM, xm, METRO_Y - 1.6, tz + s * 1.25, 1, 1, 1, s > 0 ? 0 : Math.PI, 0, 0, false);
+          cols.push({ box: true, x0: xm - 2, x1: xm + 2, z0: tz - 1.2, z1: tz + 1.2, h: METRO_Y, solid: true });
+        }
+        b.add(GEO.box, MAT.glass, xm, METRO_Y + 3.8, z, 26, 0.1, 12.4, 0, 0, 0, false); // cam çatı
+        b.add(GEO.box, MAT.darkMetal, xm, METRO_Y + 3.9, z, 26.4, 0.12, 0.3);
+        for (const s of [-1, 1]) b.add(new T.PlaneGeometry(2.4, 2.4), RSIGN.metroM, xm + s * 13.3, METRO_Y + 2.2, z, 1, 1, 1, s * Math.PI / 2, 0, 0, false);
+      }
+    }
+    return crossing;
+  }
+
+  // --- raylı araç modelleri (birleştirilmiş, tek grup)
+  function buildConsist(kind) {
+    const b = new Batch(), root = new T.Group();
+    const spec = {
+      banliyo: { n: 4, len: 19, gap: 1, W: 3.0, H: 3.9, floor: 1.0, body: 0xf2f2f0, stripe: 0xd32f2f, sign: RSIGN.banliyo },
+      metro: { n: 4, len: 18, gap: 0.8, W: 2.9, H: 3.6, floor: 0.9, body: 0xc9ced3, stripe: 0x1565c0, sign: RSIGN.metroDest },
+      tram: { n: 5, len: 6.2, gap: 0.35, W: 2.65, H: 3.4, floor: 0.35, body: 0xf4f4f2, stripe: 0xc62828, sign: RSIGN.tramDest },
+      yuk: { n: 7, len: 14, gap: 1, W: 2.9, H: 3.6, floor: 1.1, body: 0x8e2a2a, stripe: 0xffb300, sign: RSIGN.freight },
+    }[kind];
+    const L = spec.n * spec.len + (spec.n - 1) * spec.gap;
+    const glassM = CARMAT.glass, dark = MAT.darkMetal;
+    const bodyM = new T.MeshStandardMaterial({ color: spec.body, roughness: 0.35, metalness: kind === "metro" ? 0.6 : 0.2 });
+    const stripeM = new T.MeshStandardMaterial({ color: spec.stripe, roughness: 0.4 });
+    const containerCols = [0x1565c0, 0xc62828, 0x2e7d32, 0xef6c00, 0x6a1b9a, 0x00838f, 0xf9a825];
+    for (let i = 0; i < spec.n; i++) {
+      const zc = -L / 2 + spec.len / 2 + i * (spec.len + spec.gap), lead = i === spec.n - 1, tail = i === 0;
+      const hb = spec.H - spec.floor, yb = spec.floor + hb / 2;
+      if (kind === "yuk" && !lead) { // konteyner vagonu
+        b.add(GEO.box, dark, 0, spec.floor - 0.1, zc, spec.W - 0.2, 0.25, spec.len);
+        const cm = new T.MeshStandardMaterial({ color: containerCols[i % containerCols.length], roughness: 0.6, metalness: 0.3 });
+        b.add(GEO.box, cm, 0, spec.floor + 1.3, zc, spec.W - 0.3, 2.5, spec.len - 1.2);
+        for (let k = -5; k <= 5; k++) b.add(GEO.box, cm, spec.W / 2 - 0.13, spec.floor + 1.3, zc + k * 1.1, 0.04, 2.4, 0.08);
+        for (let k = -5; k <= 5; k++) b.add(GEO.box, cm, -spec.W / 2 + 0.13, spec.floor + 1.3, zc + k * 1.1, 0.04, 2.4, 0.08);
+      } else {
+        const bl = spec.len - (lead ? 1.6 : 0) - (tail ? 1.6 : 0), bc = zc + ((tail ? 1.6 : 0) - (lead ? 1.6 : 0)) / 2;
+        b.add(GEO.box, kind === "yuk" ? stripeM : bodyM, 0, yb, bc, spec.W, hb, bl);
+        if (kind !== "yuk") {
+          b.add(GEO.box, glassM, 0, spec.floor + hb * 0.55, zc, spec.W + 0.02, hb * 0.32, spec.len - 3.2);
+          b.add(GEO.box, stripeM, 0, spec.floor + hb * 0.2, zc, spec.W + 0.03, 0.28, spec.len - 0.4);
+          b.add(GEO.box, stripeM, 0, spec.H - 0.15, zc, spec.W - 0.4, 0.06, spec.len - 0.6);
+          const doors = kind === "tram" ? [0] : [-spec.len * 0.3, spec.len * 0.3];
+          for (const dz of doors) for (const s of [-1, 1]) b.add(GEO.box, kind === "metro" ? RMAT.metroBlue : dark, s * (spec.W / 2 + 0.015), spec.floor + hb * 0.42, zc + dz, 0.02, hb * 0.8, 1.3, 0, 0, 0, false);
+        } else { // lokomotif kabin camı
+          b.add(GEO.box, glassM, 0, spec.floor + hb * 0.7, zc + spec.len / 2 - 2.4, spec.W + 0.02, 0.8, 1.6);
+        }
+        b.add(GEO.box, dark, 0, spec.H + 0.15, zc, spec.W * 0.6, 0.3, spec.len * 0.35); // çatı ekipmanı
+      }
+      // burun ve arka uç (eğimli ön cam, farlar, tabela)
+      for (const [end, sgn] of [[lead, 1], [tail, -1]]) {
+        if (!end) continue;
+        const ez = zc + sgn * (spec.len / 2 - 0.8);
+        b.add(GEO.box, kind === "yuk" ? stripeM : bodyM, 0, spec.floor + (spec.H - spec.floor) * 0.4, ez, spec.W, (spec.H - spec.floor) * 0.8, 1.6);
+        b.add(GEO.box, glassM, 0, spec.floor + (spec.H - spec.floor) * 0.72, ez + sgn * 0.55, spec.W - 0.3, (spec.H - spec.floor) * 0.42, 0.7, 0, sgn * -0.45, 0, false);
+        b.add(new T.PlaneGeometry(1.4, 0.26), spec.sign, 0, spec.H - 0.25, ez + sgn * 0.82, 1, 1, 1, sgn > 0 ? 0 : Math.PI, 0, 0, false);
+        for (const s of [-0.9, 0.9]) b.add(GEO.box, sgn > 0 ? CARMAT.head : CARMAT.tailOn, s, spec.floor + 0.35, ez + sgn * 0.81, 0.3, 0.14, 0.04, 0, 0, 0, false);
+        b.add(GEO.box, stripeM, 0, spec.floor + 0.2, ez + sgn * 0.6, spec.W, 0.3, 0.6);
+      }
+      // bojiler ve tekerlekler
+      for (const bz of kind === "tram" ? [0] : [-spec.len / 2 + 2.6, spec.len / 2 - 2.6]) {
+        b.add(GEO.box, dark, 0, Math.max(0.35, spec.floor * 0.5), zc + bz, spec.W - 0.5, Math.max(0.3, spec.floor * 0.55), 2.6);
+        for (const wz of [-0.8, 0.8]) for (const s of [-0.75, 0.75]) b.add(GEO.cyl, dark, s, 0.45, zc + bz + wz, 0.45, 0.14, 0.45, 0, 0, Math.PI / 2);
+      }
+      if (i > 0) b.add(GEO.box, dark, 0, spec.floor + hb * 0.45, zc - spec.len / 2 - spec.gap / 2, spec.W - 0.4, hb * 0.85, spec.gap + 0.05); // körük
+      if (kind === "tram" && i === 2) { // pantograf
+        b.add(GEO.box, dark, 0, spec.H + 0.5, zc, 0.06, 1.0, 0.06, 0, 0.6, 0); b.add(GEO.box, dark, 0, spec.H + 0.95, zc + 0.3, 1.2, 0.05, 0.08);
+      }
+    }
+    b.build(root);
+    root.traverse((o) => { if (o.isMesh) { o.matrixAutoUpdate = false; o.updateMatrix(); } });
+    return { root, body: null, wheels: [], L, W: spec.W, H: spec.H };
+  }
+
+  // --- raylı araçların doğması
+  function spawnRail(go) {
+    const ccx = Math.floor(go.x / CELL), ccz = Math.floor(go.z / CELL);
+    // trenler: yakın demiryolu sıraları
+    for (let dz = -3; dz <= 3; dz++) {
+      const row = ccz + dz; if (!isRailRow(row)) continue;
+      const zc = row * CELL + CELL / 2; if (Math.abs(zc - go.z) > 170) continue;
+      for (const dir of [1, -1]) {
+        const lat = zc + dir * RAIL_OFF;
+        if (g.vehicles.some((v) => v.rail === "tren" && v.lat === lat && Math.abs(v.along - go.x) < 320)) continue;
+        if (Math.random() > 0.06) continue;
+        addRailVehicle(Math.random() < 0.65 ? "banliyo" : "yuk", "x", dir, lat, go.x - dir * rand(170, 240), "tren");
+      }
+    }
+    // tramvaylar: yakın tramvay caddeleri
+    for (let dx = -3; dx <= 3; dx++) {
+      const k = ccx + dx; if (!isTramLine(k)) continue;
+      if (Math.abs(k * CELL - go.x) > 150) continue;
+      for (const dir of [1, -1]) {
+        const lat = k * CELL - dir * LANE;
+        if (g.vehicles.some((v) => v.rail === "tram" && v.lat === lat && Math.abs(v.along - go.z) < 260)) continue;
+        if (Math.random() > 0.08) continue;
+        addRailVehicle("tram", "z", dir, lat, go.z - dir * rand(90, 150), "tram");
+      }
+    }
+    // metro: yakın metro caddeleri
+    for (let dz = -3; dz <= 3; dz++) {
+      const k = ccz + dz; if (!isMetroLine(k)) continue;
+      if (Math.abs(k * CELL - go.z) > 170) continue;
+      for (const dir of [1, -1]) {
+        const lat = k * CELL + dir * METRO_OFF;
+        if (g.metros.some((m) => m.lat === lat && Math.abs(m.along - go.x) < 320)) continue;
+        if (Math.random() > 0.07) continue;
+        const v = buildConsist("metro"); scene.add(v.root);
+        g.metros.push(Object.assign(v, { dir, lat, along: go.x - dir * rand(160, 230), speed: 17, cruise: 17, dwell: 0, served: null }));
+      }
+    }
+  }
+  function addRailVehicle(kind, axis, dir, lat, along, railType) {
+    const v = buildConsist(kind);
+    const x = axis === "z" ? lat : along, z = axis === "z" ? along : lat;
+    const yaw = axis === "z" ? (dir > 0 ? 0 : Math.PI) : (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+    v.root.position.set(x, railType === "tren" ? CURB + 0.2 : 0, z); v.root.rotation.y = yaw; scene.add(v.root);
+    const cruise = railType === "tren" ? (kind === "yuk" ? 16 : 22) : 8.5;
+    g.vehicles.push(Object.assign(v, { kind, rail: railType, axis, dir, lat, along, x, z, yaw, speed: cruise, cruise, state: "drive", wreckT: 0, hop: 0, hopV: 0, tilt: 0, latOff: 0, yawOff: 0, hitCd: 0, honked: 0, dwell: 0, served: null, yBase: railType === "tren" ? CURB + 0.2 : 0 }));
+  }
+  // tramvay ve metro durakları: blok ortası
+  function stopTarget(v, target, stopEvery, dwellTime) {
+    const s = v.along, dir = v.dir;
+    const next = (Math.floor((s - CELL / 2) / (CELL * stopEvery)) + (dir > 0 ? 1 : 0)) * CELL * stopEvery + CELL / 2;
+    const ahead = (next - s) * dir, idx = Math.round(next);
+    if (v.dwell > 0) return 0;
+    if (ahead > 0 && ahead < 22 && v.served !== idx) {
+      if (ahead < 0.7) { v.dwell = dwellTime; v.served = idx; return 0; }
+      return Math.min(target, Math.max(1.2, ahead * 0.6));
+    }
+    return target;
+  }
+  function updateMetros(dt) {
+    for (let i = g.metros.length - 1; i >= 0; i--) {
+      const m = g.metros[i];
+      m.dwell = Math.max(0, m.dwell - dt);
+      // istasyonlar: mod(cx,3)==1 hücrelerin ortası → x = (3j+1)*64 + 32
+      const s = m.along, dir = m.dir;
+      const base = CELL * 3, off = CELL + CELL / 2;
+      const next = (Math.floor((s - off) / base) + (dir > 0 ? 1 : 0)) * base + off;
+      const ahead = (next - s) * dir, idx = Math.round(next);
+      let target = m.cruise;
+      if (m.dwell > 0) target = 0;
+      else if (ahead > 0 && ahead < 40 && m.served !== idx) { if (ahead < 0.8) { m.dwell = 5; m.served = idx; target = 0; } else target = Math.max(1.5, Math.min(m.cruise, ahead * 0.45)); }
+      m.speed += (target - m.speed) * damp(target < m.speed ? 3 : 0.8, dt);
+      m.along += m.speed * dt * dir;
+      m.root.position.set(m.along, METRO_Y, m.lat);
+      m.root.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+      if (Math.abs(m.along - g.goat.x) > 300 || Math.abs(m.lat - g.goat.z) > 260) { scene.remove(m.root); g.metros.splice(i, 1); }
+    }
+  }
+  // hemzemin geçitler: tren yaklaşınca bariyer iner, ışık yanıp söner, zil çalar
+  function crossingDown(x, row) {
+    const c = chunks.get(key(Math.round(x / CELL), row));
+    return !!(c && c.crossing && c.crossing.down > 0.2);
+  }
+  function updateCrossings(dt) {
+    const go = g.goat, ccx = Math.floor(go.x / CELL), ccz = Math.floor(go.z / CELL);
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+      const c = chunks.get(key(ccx + dx, ccz + dz)); if (!c || !c.crossing) continue;
+      const cr = c.crossing;
+      const soon = g.vehicles.some((v) => v.rail === "tren" && Math.abs(v.lat - cr.zc) < 4 && ((cr.x - v.along) * v.dir > -v.L / 2 - 6) && ((cr.x - v.along) * v.dir < 90 + v.L / 2) && Math.abs(cr.x - v.along) < 90 + v.L);
+      cr.target = soon ? 1 : 0;
+      cr.down += (cr.target - cr.down) * damp(2.5, dt);
+      cr.t += dt;
+      for (const a of cr.arms) a.pv.rotation.z = a.dirx * -1.35 * (1 - cr.down);
+      const blink = cr.target > 0 && Math.floor(cr.t * 3) % 2 === 0;
+      cr.lamps.forEach((l, i) => { l.material = cr.target > 0 && (i % 2 === 0) === blink ? RMAT.lampOn : RMAT.lampOff; });
+      if (cr.target > 0 && Math.hypot(go.x - cr.x, go.z - cr.zc) < 30) { cr.bell = (cr.bell || 0) - dt; if (cr.bell <= 0) { cr.bell = 0.6; sfx.bell(); } }
+    }
+  }
+
   function spawnAnimal(initial) {
     if (!protos.fox) return;
     const kind = Math.random() < 0.6 ? "kopek" : "kedi";
@@ -2537,7 +2832,7 @@
   function nearCarCheck(go) {
     let best = null, bd = 99;
     if (!g.inside) for (const v of g.vehicles) {
-      if (v.dead || v.state === "player") continue;
+      if (v.dead || v.state === "player" || v.rail) continue;
       const [la, ll] = carLocal(v, go.x, go.z);
       const dist = Math.hypot(Math.max(0, Math.abs(la) - v.L / 2), Math.max(0, Math.abs(ll) - v.W / 2));
       const reach = Math.abs(v.speed) > 3 ? 2.2 : 1.6; // giden araca da atlanabilir
@@ -2708,6 +3003,7 @@
     addCombo(KINDS[p.kind].pts, p.x, 2.8, p.z, chain ? "Zincir!" : word || pick(dashWords()), p.kind === "bekci" ? 28 : 14);
   }
   function knockVehicle(v) {
+    if (v.rail) return;
     if (v.state === "wreck") return;
     v.state = "wreck"; v.wreckT = 4; v.speed = 0; v.hopV = 3.5; g.carHits++;
     const go = g.goat;
@@ -2825,6 +3121,7 @@
     if (mode !== "play") return;
     updateVehicles(dt, go, fx, fz);
     if (mode !== "play") return;
+    updateMetros(dt); updateCrossings(dt);
     updateAnimals(dt, go);
     updateBirds(dt, go);
 
@@ -2855,7 +3152,7 @@
       if (g.pickups.filter((p) => p.type === "simit").length < 4) spawnPickup("simit");
       if (g.lives < 3 && !g.pickups.some((p) => p.type === "elma") && Math.random() < 0.06) spawnPickup("elma");
       spawnPigeons(go.x, go.z);
-      if (!g.inside) spawnParkedNear(go);
+      if (!g.inside) { spawnParkedNear(go); spawnRail(go); }
     }
     updateFx(dt);
     syncHud();
@@ -2936,6 +3233,38 @@
       const v = g.vehicles[i];
       v.hitCd = Math.max(0, v.hitCd - dt);
       if (v.state === "player") continue; // keçi kullanıyor
+      if (v.rail) { // tren ve tramvay: raylarında gider
+        v.dwell = Math.max(0, (v.dwell || 0) - dt);
+        const ax = v.axis === "x" ? v.dir : 0, az = v.axis === "z" ? v.dir : 0;
+        const rel = (px, pz) => [(px - v.x) * ax + (pz - v.z) * az, Math.abs((px - v.x) * az - (pz - v.z) * ax)];
+        let target = v.cruise;
+        const [ga, gl] = rel(go.x, go.z);
+        if (v.rail === "tram") {
+          target = stopTarget(v, target, 1, 4);
+          if (ga > 0 && ga < 16 && gl < 2.2) { target = Math.min(target, Math.max(0, (ga - v.L / 2 - 2) * 1.0)); if (v.honked <= 0) { sfx.tramBell(); v.honked = 3; } }
+          for (const p of g.people) { if (p.flying) continue; const [pa, pl] = rel(p.x, p.z); if (pa > 0 && pa < v.L / 2 + 8 && pl < 1.8) target = Math.min(target, Math.max(0, (pa - v.L / 2 - 1.5))); }
+          for (const o of g.vehicles) { if (o === v || o.rail === "tren") continue; const [oa, ol] = rel(o.x, o.z); const ext = Math.abs(Math.cos(o.yaw - v.yaw)) * o.W + Math.abs(Math.sin(o.yaw - v.yaw)) * o.L; if (oa > 0 && oa < v.L / 2 + 8 && ol < (ext + v.W) / 2 + 0.3) target = Math.min(target, Math.max(0, oa - v.L / 2 - 2)); }
+        } else if (ga > 0 && ga < 70 + v.L / 2 && gl < 2.5 && v.honked <= 0) { sfx.trainHorn(); v.honked = 5; popText(go.x, go.y + 2.6, go.z, "Raydan çekil!", "#d6402b", 28); }
+        v.honked = Math.max(0, (v.honked || 0) - dt);
+        v.speed += (target - v.speed) * damp(target < v.speed ? 2.5 : 0.6, dt);
+        v.along += v.speed * dt * v.dir;
+        v.x = v.axis === "z" ? v.lat : v.along; v.z = v.axis === "z" ? v.along : v.lat;
+        v.root.position.set(v.x, v.yBase, v.z);
+        // keçiyle çarpışma
+        if (!g.driving) {
+          const c = Math.cos(v.yaw), s2 = Math.sin(v.yaw), rx = go.x - v.x, rz = go.z - v.z;
+          const la = rx * s2 + rz * c, ll = rx * c - rz * s2;
+          if (Math.abs(la) < v.L / 2 + 0.45 && Math.abs(ll) < v.W / 2 + 0.45 && go.y < v.yBase + v.H) {
+            if (v.speed > 1.5 && g.inv <= 0) { damage(v.rail === "tren" ? "Tren çarptı!" : "Tramvay çarptı!"); go.stun = 0.6; g.shake = 0.8; }
+            else if (go.dashT > 0 && v.hitCd <= 0) { v.hitCd = 1; g.shake = 0.35; sfx.thud(); g.score += 20; popText(go.x, 3, go.z, v.rail === "tren" ? "Tren sarsıldı! +20" : "Tramvay sarsıldı! +20", "#d6402b", 30); go.dashT = 0; }
+            const pushL = v.W / 2 + 0.5 - Math.abs(ll), sgn = Math.sign(ll) || 1;
+            go.x += c * pushL * sgn; go.z -= s2 * pushL * sgn;
+            if (mode !== "play") return;
+          }
+        }
+        if (Math.abs(v.along - (v.axis === "z" ? go.z : go.x)) > 340 || Math.abs(v.lat - (v.axis === "z" ? go.x : go.z)) > 260) { scene.remove(v.root); g.vehicles.splice(i, 1); }
+        continue;
+      }
       if (v.mixer) v.mixer.update(dt * (v.speed / 10));
       const ax = v.axis === "x" ? v.dir : 0, az = v.axis === "z" ? v.dir : 0; // yön vektörü
       if (v.free) { // keçinin bıraktığı araç: trafik yapay zekâsı yok
@@ -2953,6 +3282,10 @@
       } else {
         // önünde keçi / insan / araç varsa fren
         let target = v.cruise; if (v.scaredT > 0) { v.scaredT -= dt; target = 0; }
+        if (v.axis === "z") { // hemzemin geçitte bariyer inikse dur
+          const row = Math.floor((v.z + v.dir * 14) / CELL);
+          if (isRailRow(row)) { const d = (row * CELL + CELL / 2 - v.z) * v.dir - 8.5; if (d > -1 && d < 26 && crossingDown(v.lat, row)) target = Math.min(target, Math.max(0, d * 1.1)); }
+        }
         const rel = (px, pz) => [(px - v.x) * ax + (pz - v.z) * az, Math.abs((px - v.x) * az - (pz - v.z) * ax)];
         const [ga, gl] = rel(go.x, go.z);
         if (ga > 0 && ga < 14 && gl < 2.2) { target = Math.min(target, Math.max(0, (ga - 3.5) * 1.2)); if (g.honkT <= 0 && v.honked <= 0) { sfx.honk(); g.honkT = 1.5; v.honked = 4; } }
@@ -3206,7 +3539,7 @@
       const x0 = ch.cx * CELL + ROAD, z0 = ch.cz * CELL + ROAD, x1 = x0 + CELL - 2 * ROAD, z1 = z0 + CELL - 2 * ROAD;
       if (Math.hypot((x0 + x1) / 2 - go.x, (z0 + z1) / 2 - go.z) > range + 50) continue;
       const corners = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(([x, z]) => toMap(x, z));
-      mx.fillStyle = ch.type === "park" ? "#6f9a4a" : ch.type === "square" ? "#cdbfa6" : ch.type === "parking" ? "#6e7074" : "#a9a39a";
+      mx.fillStyle = ch.type === "park" ? "#6f9a4a" : ch.type === "square" ? "#cdbfa6" : ch.type === "parking" ? "#6e7074" : ch.type === "rail" ? "#7d8a5c" : "#a9a39a";
       mx.beginPath(); corners.forEach(([px, py], i) => (i ? mx.lineTo(px, py) : mx.moveTo(px, py))); mx.closePath(); mx.fill();
       for (const col of ch.cols) if (col.box) {
         const pts = [[col.x0, col.z0], [col.x1, col.z0], [col.x1, col.z1], [col.x0, col.z1]].map(([x, z]) => toMap(x, z));
@@ -3214,13 +3547,23 @@
         mx.beginPath(); pts.forEach(([px, py], i) => (i ? mx.lineTo(px, py) : mx.moveTo(px, py))); mx.closePath(); mx.fill(); mx.stroke();
       }
     }
+    mx.lineWidth = 3;
+    for (const ch of chunks.values()) { // raylar: demiryolu, tramvay, metro
+      const seg = (x0, z0, x1, z1, col, w) => { const [a1, b1] = toMap(x0, z0), [a2, b2] = toMap(x1, z1); mx.strokeStyle = col; mx.lineWidth = w; mx.beginPath(); mx.moveTo(a1, b1); mx.lineTo(a2, b2); mx.stroke(); };
+      const ox = ch.cx * CELL, oz = ch.cz * CELL;
+      if (Math.hypot(ox + 32 - go.x, oz + 32 - go.z) > range + 60) continue;
+      if (ch.type === "rail") seg(ox - 6, oz + 32, ox + CELL, oz + 32, "#4e3b2a", 7);
+      if (isTramLine(ch.cx)) seg(ox, oz, ox, oz + CELL, "#c62828", 3);
+      if (isMetroLine(ch.cz)) seg(ox, oz, ox + CELL, oz, "#1565c0", 5);
+    }
+    for (const m of g.metros) { const [px, py] = toMap(m.along, m.lat); mx.fillStyle = "#90caf9"; mx.beginPath(); mx.arc(px, py, 5, 0, 7); mx.fill(); }
     for (const ch of chunks.values()) for (const d of ch.doors) {
       if (Math.hypot(d.x - go.x, d.z - go.z) > range) continue;
       const [px, py] = toMap(d.x, d.z); mx.fillStyle = d.state === "broken" ? "#2b1d14" : "#d6402b"; mx.beginPath(); mx.arc(px, py, 4, 0, 7); mx.fill();
     }
     for (const v of g.vehicles) {
       const [px, py] = toMap(v.x, v.z); mx.save(); mx.translate(px, py); mx.rotate(-(v.yaw - go.yaw));
-      mx.fillStyle = isHW(v.kind) ? "#" + (v.color || 0xff2a6d).toString(16).padStart(6, "0") : v.kind === "taxi" ? "#f5c518" : v.kind === "bus" ? "#2a73b8" : "#f4f4f4"; mx.fillRect(-v.W * k / 2 - 1, -v.L * k / 2, v.W * k + 2, v.L * k); mx.restore();
+      mx.fillStyle = v.rail ? (v.kind === "tram" ? "#c62828" : v.kind === "yuk" ? "#8e2a2a" : "#f2f2f0") : isHW(v.kind) ? "#" + (v.color || 0xff2a6d).toString(16).padStart(6, "0") : v.kind === "taxi" ? "#f5c518" : v.kind === "bus" ? "#2a73b8" : "#f4f4f4"; mx.fillRect(-v.W * k / 2 - 1, -v.L * k / 2, v.W * k + 2, v.L * k); mx.restore();
     }
     for (const pk of g.pickups) { const [px, py] = toMap(pk.x, pk.z); mx.fillStyle = pk.type === "simit" ? "#a8662c" : "#d6402b"; mx.beginPath(); mx.arc(px, py, 6, 0, 7); mx.fill(); }
     for (const p of g.people) {
@@ -3320,7 +3663,7 @@
     loadingText.textContent = "Şehir kuruluyor…";
     setTimeout(() => {
       toMenu();
-      if (location.hash === "#test") window.__k = { get g() { return g; }, cellType, action, useAnimal, get goat() { return goat; }, toggleCar, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
+      if (location.hash === "#test") window.__k = { get g() { return g; }, addRailVehicle, cellType, action, useAnimal, get goat() { return goat; }, toggleCar, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
       requestAnimationFrame((t) => { last = t; frame(t); });
       if (failedModels.length) setTimeout(() => toast("Bazı modeller yüklenemedi, yedekleri kullanılıyor: " + failedModels.join(", ")), 600);
     }, 30);
