@@ -17,6 +17,7 @@ iPad için 3B sonsuz koşu oyunu. Keçi şehre iniyor: caddelerde istediğin yö
 - Balkonlu apartmanlar; zemin katlarda bakkal, fırın, eczane, berber, çay ocağı, kasap, manav gibi dükkânlar.
 - Parklar (çeşme, banklar) ve saat kuleli meydanlar. Çatılarda su depoları ve çanak antenler.
 - Cadde kenarlarında iki tarafa sık ve rastgele park etmiş arabalar; bazı bloklar araçlarla dolu otopark alanıdır.
+- Cadde kenarlarında iki tarafa sık ve rastgele park etmiş arabalar; bazı bloklar araçlarla dolu otopark alanıdır.
 - Trafik: sedan, hatchback, sarı taksi, otobüs ve kamyon. Araçlar şeritlerinde gider, önlerine çıkınca fren yapıp korna çalar.
 - İnsanlar kaldırımlarda yürür, keçiyi görünce kaçar. Meydanlarda sokak dansçısı samba yapar. Bekçiler keçiyi kovalar; ilk 25 saniye bekçi çıkmaz, sonra aynı anda en fazla 2 (3 dakikadan sonra 3) bekçi olur.
 - Hayvanlar (aynı anda en fazla 2 köpek/kedi): sokak köpekleri yakına gelince havlayıp peşinden koşar, kediler kaçar, güvercinler havalanır, leylekler tepede süzülür.
@@ -52,7 +53,8 @@ Her hayvan kapı kırabilir, iç mekânlara girebilir ve araba kullanabilir. Kla
 - Kapıya tosla: cam kapı tek darbede tuzla buz olur, tahta kapı iki darbede kırılır. Kırık kapıdan koşarak içeri gir; çıkmak için kapıya geri koş.
 - İç mekânlar dükkânın türüne göre değişir: bakkal/market, fırın (taş fırın, ekmek rafları), kasap (et vitrini, asılı etler), berber/kuaför (koltuklar, aynalar), çay ocağı/lokanta (masalar, çay bardakları, semaver), emlakçı (masalar, bilgisayarlar, ilan panosu) ve apartman dairesi (kilim, koltuk, televizyon, kitaplık, mutfak).
 - İçeride: rafları devir, buzdolabı camını ve aynaları kır, masaları ve sandalyeleri uçur, televizyonu patlat, ekmek ve simit ye, esnafı ve müşterileri kovala. Uçan biri eşyaya çarparsa onu da devirir. Her şeyi dağıtınca +100.
-- Bazen (yaklaşık her iki odadan birinde) bir süre sonra bekçi kapıdan içeri dalar.
+- **Üst katlar:** her binada merdiven var (kapıdan girince sağ önde). Basamaklardan yürüyerek binanın kat sayısı kadar yukarı çıkılır (en çok 6 kat). Üst katlar apartman dairesi ya da ofistir; her katta insanlar ve dağıtılacak eşyalar vardır. Aşağı inmek için sol öndeki merdiven boşluğuna koş; dışarı yalnızca zemin kattan çıkılır.
+- Bazen (yaklaşık her iki odadan birinde) bir süre sonra bekçi içeri dalar (üst katlarda merdivenden gelir).
 - Kırılan kapılar ve dağıtılan odalar oyun boyunca öyle kalır.
 
 ## Kurallar
