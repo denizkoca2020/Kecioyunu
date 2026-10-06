@@ -16,6 +16,7 @@ iPad için 3B sonsuz koşu oyunu. Keçi şehre iniyor: caddelerde istediğin yö
 - Izgara düzeninde sonsuz şehir: dört şeritli caddeler, şerit çizgileri, yaya geçitleri, trafik ışıkları, sokak lambaları, otobüs durakları.
 - Balkonlu apartmanlar; zemin katlarda bakkal, fırın, eczane, berber, çay ocağı, kasap, manav gibi dükkânlar.
 - Parklar (çeşme, banklar) ve saat kuleli meydanlar. Çatılarda su depoları ve çanak antenler.
+- Cadde kenarlarında iki tarafa sık ve rastgele park etmiş arabalar; bazı bloklar araçlarla dolu otopark alanıdır.
 - Trafik: sedan, hatchback, sarı taksi, otobüs ve kamyon. Araçlar şeritlerinde gider, önlerine çıkınca fren yapıp korna çalar.
 - İnsanlar kaldırımlarda yürür, keçiyi görünce kaçar. Meydanlarda sokak dansçısı samba yapar. Bekçiler keçiyi kovalar; ilk 25 saniye bekçi çıkmaz, sonra aynı anda en fazla 2 (3 dakikadan sonra 3) bekçi olur.
 - Hayvanlar (aynı anda en fazla 2 köpek/kedi): sokak köpekleri yakına gelince havlayıp peşinden koşar, kediler kaçar, güvercinler havalanır, leylekler tepede süzülür.

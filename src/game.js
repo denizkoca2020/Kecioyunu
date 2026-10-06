@@ -370,9 +370,10 @@
     const r = rng((cx * 92837111) ^ (cz * 689287499) ^ 42)();
     if (r < 0.1) return "park";
     if (r < 0.15) return "square";
+    if (r < 0.22) return "parking";
     return "block";
   }
-  const floorY = (x, z) => (g && g.inside ? 0 : groundY(x, z));
+  const floorY = (x, z) => (g && g.inside ? roomFloorY(g.inside, x, z) : groundY(x, z));
   function groundY(x, z) {
     const lx = x - Math.floor(x / CELL) * CELL, lz = z - Math.floor(z / CELL) * CELL;
     return lx > ROAD && lx < CELL - ROAD && lz > ROAD && lz < CELL - ROAD ? CURB : 0;
@@ -495,7 +496,7 @@
       const off = (r() - 0.5) * Math.max(0, (side === "S" || side === "N" ? w : d) - 4);
       const F = { S: [cx + off, z0, 0, -1], N: [cx + off, z1, 0, 1], W: [x0, cz + off, -1, 0], E: [x1, cz + off, 1, 0] }[side];
       const door = makeDoor(info.id, kind, shopIdx, F[0], F[1], F[2], F[3], b);
-      info.doors.push(door); cols.push(door.col);
+      door.floors = Math.min(floors, 6); info.doors.push(door); cols.push(door.col);
     }
     b.add(boxUV(w, 4.2, d, 6, 4.2), shop, cx, 2.1 + CURB, cz);
     b.add(boxUV(w - 0.3, H - 4.2, d - 0.3, 3, 3), facade, cx, 4.2 + (H - 4.2) / 2 + CURB, cz);
@@ -579,8 +580,16 @@
     // park edilmiş arabalar: keçi yaklaşınca binilebilir gerçek araçlara dönüşür
     const parked = [];
     const parkSpot = (x, z, yaw) => parked.push({ x, z, yaw, kind: ["sedan", "hatch", "sedan", "taxi"][Math.floor(r() * 4)], color: CAR_COLORS[Math.floor(r() * CAR_COLORS.length)], veh: null, gone: false });
-    for (let s = oz + ROAD + 10; s < oz + CELL - ROAD - 8; s += 6.5) if (r() < 0.3) parkSpot(ox + PARK_LANE, s, Math.PI);
-    for (let s = ox + ROAD + 10; s < ox + CELL - ROAD - 8; s += 6.5) if (r() < 0.3) parkSpot(s, oz + PARK_LANE, Math.PI / 2);
+    // cadde kenarları: iki tarafta sık ve rastgele
+    const jit = () => (r() - 0.5) * 0.06;
+    for (let s = oz + ROAD + 9; s < oz + CELL - ROAD - 7; s += 5.4 + r() * 0.8) {
+      if (r() < 0.72) parkSpot(ox + PARK_LANE + (r() - 0.5) * 0.25, s, Math.PI + jit());
+      if (r() < 0.72) parkSpot(ox - PARK_LANE + (r() - 0.5) * 0.25, s + 1.3, jit());
+    }
+    for (let s = ox + ROAD + 9; s < ox + CELL - ROAD - 7; s += 5.4 + r() * 0.8) {
+      if (r() < 0.72) parkSpot(s, oz + PARK_LANE + (r() - 0.5) * 0.25, Math.PI / 2 + jit());
+      if (r() < 0.72) parkSpot(s + 1.3, oz - PARK_LANE + (r() - 0.5) * 0.25, -Math.PI / 2 + jit());
+    }
 
     // --- iç kısım
     const spawns = { pigeons: [] };
@@ -593,6 +602,24 @@
         addBuildingRow(b, cols, r, ix0 + i * lw + 0.05, iz0 + j * ld + 0.05, ix0 + (i + 1) * lw - 0.05, iz0 + (j + 1) * ld - 0.05, { id: `${cx},${cz},${i},${j}`, streets, doors });
       }
       if (r() < 0.35) addSimitCart(b, cols, bx0 + 2.4, oz + 30, 0);
+    } else if (type === "parking") { // otopark: dört sıra, rastgele dolu
+      const pz = cm - ox + oz;
+      b.add(planeUV(ix1 - ix0, iz1 - iz0, 8, 8), MAT.asphalt, cm, CURB + 0.012, pz, 1, 1, 1, 0, 0, 0, false);
+      const rows = [[iz0 + 3.3, 0], [iz0 + 13.6, Math.PI], [iz1 - 13.6, 0], [iz1 - 3.3, Math.PI]];
+      for (const [rz, yaw] of rows) {
+        for (let x = ix0 + 2.5; x < ix1 - 2.5; x += 2.7) {
+          b.add(GEO.box, MAT.white, x - 1.35, CURB + 0.02, rz, 0.12, 0.02, 5, 0, 0, 0, false);
+          if (r() < 0.6) parkSpot(x + (r() - 0.5) * 0.2, rz + (r() - 0.5) * 0.3, yaw + (r() - 0.5) * 0.08);
+        }
+      }
+      b.add(GEO.box, MAT.white, cm, CURB + 0.02, pz, ix1 - ix0 - 6, 0.02, 0.15, 0, 0, 0, false);
+      // giriş kulübesi ve tabela
+      b.add(GEO.box, MAT.white, ix0 + 1.5, CURB + 1.2, pz, 2, 2.4, 2);
+      b.add(GEO.box, MAT.glass, ix0 + 2.52, CURB + 1.5, pz, 0.04, 1, 1.6, 0, 0, 0, false);
+      b.add(new T.PlaneGeometry(2.4, 0.6), lotSignMat, ix0 + 1.5, CURB + 2.75, pz + 1.02, 1, 1, 1, 0, 0, 0, false);
+      b.add(GEO.box, MAT.red, ix0 + 4, CURB + 0.9, pz + 2, 0.08, 0.08, 3.2, 0, 0, 0, true); // bariyer kolu
+      cols.push({ box: true, x0: ix0 + 0.5, x1: ix0 + 2.5, z0: pz - 1, z1: pz + 1, h: 2.4, solid: true });
+      for (const [lx, lz] of [[ix0 + 1, iz0 + 8.5], [ix1 - 1, iz0 + 8.5], [ix0 + 1, iz1 - 8.5], [ix1 - 1, iz1 - 8.5]]) addLamp(b, cols, lx, lz, lx < cm ? Math.PI / 2 : -Math.PI / 2);
     } else if (type === "park") {
       for (let i = 0; i < 14; i++) { const x = ix0 + 3 + r() * (ix1 - ix0 - 6), z = iz0 + 3 + r() * (iz1 - iz0 - 6); if (Math.hypot(x - cm, z - (cm - ox + oz)) > 7) addTree(b, cols, x, z, r, true); }
       const pz = cm - ox + oz;
@@ -1492,13 +1519,18 @@
   const ROOM_TITLES = { home: "Apartman dairesi", bakery: "Fırın", butcher: "Kasap", barber: "Berber", cafe: "Çay ocağı", office: "Emlakçı", market: "Dükkân" };
   const ROOM_TIPS = { home: "Televizyonu kır, kitaplığı devir!", bakery: "Ekmekleri ye, rafları devir!", butcher: "Vitrini kır, kasabı kovala!", barber: "Aynaları kır, berberi kovala!", cafe: "Masaları uçur, bardakları kır!", office: "Masaları uçur, dolapları devir!", market: "Rafları devir, dolabı kır!" };
 
-  function buildInterior(door) {
-    const cat = categoryOf(door), r = rng(door.id.split("").reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7) | 0);
+  function buildInterior(door, floor = 0) {
+    const seed = (door.id + ":" + floor).split("").reduce((a, ch) => (Math.imul(a, 31) + ch.charCodeAt(0)) | 0, 7);
+    let h = Math.imul(seed ^ (seed >>> 16), 0x45d9f3b); h = Math.imul(h ^ (h >>> 13), 0x45d9f3b); h ^= h >>> 16; // tohumu iyice karıştır
+    const r = rng(h); r(); r();
+    const cat = floor === 0 ? categoryOf(door) : r() < 0.3 ? "office" : "home";
     const W = cat === "home" ? 12 : 11, D = cat === "home" ? 10 : 9, H = 3.4;
     const room = { door, cat, W, D, H, group: new T.Group(), items: [], food: [], people: [], cols: [], debris: [], brokenCount: 0, total: 0, t: 0, guardCame: false, cleared: false,
-      title: cat === "market" || cat === "office" ? SHOPS[door.shopIdx][0] : ROOM_TITLES[cat] };
-    const mem = roomMemory.get(door.id) || { broken: new Set(), eaten: new Set() };
-    roomMemory.set(door.id, mem); room.mem = mem;
+      title: floor > 0 ? `${floor}. kat · ${cat === "home" ? "Daire" : "Ofis"}` : cat === "market" || cat === "office" ? SHOPS[door.shopIdx][0] : ROOM_TITLES[cat],
+      floor, topFloor: door.floors || 3 };
+    const memKey = door.id + ":" + floor;
+    const mem = roomMemory.get(memKey) || { broken: new Set(), eaten: new Set() };
+    roomMemory.set(memKey, mem); room.mem = mem;
     const b = new Batch();
     // zemin, tavan, duvarlar
     const floorMat = cat === "home" || cat === "office" ? IMAT.parquet : cat === "barber" || cat === "butcher" ? IMAT.tilesB : IMAT.tiles;
@@ -1510,19 +1542,31 @@
     bs(b, GEO.box, wallMat, 0.2, H, D + 0.4, -W / 2 - 0.1, H / 2, D / 2);
     bs(b, GEO.box, wallMat, 0.2, H, D + 0.4, W / 2 + 0.1, H / 2, D / 2);
     const segW = W / 2 - DOOR_W / 2;
-    bs(b, GEO.box, wallMat, segW, H, 0.2, -(DOOR_W / 2 + segW / 2), H / 2, -0.1);
-    bs(b, GEO.box, wallMat, segW, H, 0.2, DOOR_W / 2 + segW / 2, H / 2, -0.1);
-    bs(b, GEO.box, wallMat, DOOR_W, H - DOOR_H, 0.2, 0, DOOR_H + (H - DOOR_H) / 2, -0.1);
+    if (floor === 0) {
+      bs(b, GEO.box, wallMat, segW, H, 0.2, -(DOOR_W / 2 + segW / 2), H / 2, -0.1);
+      bs(b, GEO.box, wallMat, segW, H, 0.2, DOOR_W / 2 + segW / 2, H / 2, -0.1);
+      bs(b, GEO.box, wallMat, DOOR_W, H - DOOR_H, 0.2, 0, DOOR_H + (H - DOOR_H) / 2, -0.1);
+    } else { // üst kat: kapı yok, sokağa bakan pencereler
+      bs(b, GEO.box, wallMat, W + 0.4, H, 0.2, 0, H / 2, -0.1);
+      for (const wx of [-1.6, 1.6]) {
+        b.add(new T.PlaneGeometry(1.6, 1.4), IMAT.outside, wx, 1.9, 0.005, 1, 1, 1, 0, 0, 0, false);
+        bs(b, GEO.box, im(0xffffff, 0.5), 1.75, 0.1, 0.1, wx, 1.15, 0.04); bs(b, GEO.box, im(0xffffff, 0.5), 1.75, 0.1, 0.1, wx, 2.65, 0.04);
+        bs(b, GEO.box, im(0xffffff, 0.5), 0.08, 1.5, 0.08, wx, 1.9, 0.04);
+      }
+    }
     // süpürgelik
     const base = im(0x4a3424, 0.6);
     bs(b, GEO.box, base, W, 0.12, 0.03, 0, 0.06, D - 0.01, 0, 0, 0, false);
     bs(b, GEO.box, base, 0.03, 0.12, D, -W / 2 + 0.01, 0.06, D / 2, 0, 0, 0, false);
     bs(b, GEO.box, base, 0.03, 0.12, D, W / 2 - 0.01, 0.06, D / 2, 0, 0, 0, false);
     // kapı boşluğu: dışarının aydınlığı
-    b.add(new T.PlaneGeometry(DOOR_W, DOOR_H), IMAT.outside, 0, DOOR_H / 2, -0.35, 1, 1, 1, 0, 0, 0, false);
-    for (const sx of [-1, 1]) bs(b, GEO.box, door.kind === "shop" ? doorMats.frameShop : doorMats.frameHome, 0.12, DOOR_H, 0.26, sx * (DOOR_W / 2 + 0.06), DOOR_H / 2, -0.1);
+    if (floor === 0) {
+      b.add(new T.PlaneGeometry(DOOR_W, DOOR_H), IMAT.outside, 0, DOOR_H / 2, -0.35, 1, 1, 1, 0, 0, 0, false);
+      for (const sx of [-1, 1]) bs(b, GEO.box, door.kind === "shop" ? doorMats.frameShop : doorMats.frameHome, 0.12, DOOR_H, 0.26, sx * (DOOR_W / 2 + 0.06), DOOR_H / 2, -0.1);
+    }
+    addStairs(room, b);
     // vitrin camları (dükkân) ya da pencere (ev)
-    if (door.kind === "shop") {
+    if (door.kind === "shop" && floor === 0) {
       for (const sx of [-1, 1]) {
         const wx = sx * (DOOR_W / 2 + segW / 2);
         b.add(new T.PlaneGeometry(segW - 0.8, 2.0), IMAT.outside, wx, 1.5, 0.005, 1, 1, 1, 0, 0, 0, false);
@@ -1538,7 +1582,7 @@
     for (const lx of [-W / 4, W / 4]) for (const lz of [D * 0.3, D * 0.72]) bs(b, GEO.box, IMAT.lightPanel, 1.1, 0.05, 0.3, lx, H - 0.03, lz, 0, 0, 0, false);
     for (const lz of [D * 0.3, D * 0.75]) { const pl = new T.PointLight(cat === "home" || cat === "cafe" ? 0xffd9a8 : 0xfff4e4, 0.55, 14, 2); pl.position.set(0, H - 0.4, lz); room.group.add(pl); }
     // duvar süsü: tablo ve saat
-    if (cat !== "barber") { const pm = pictureMat(door.id.length * 7 + 3); b.add(new T.PlaneGeometry(1.2, 0.8), pm, -W / 2 + 0.02, 2.1, D * 0.45, 1, 1, 1, Math.PI / 2, 0, 0, false); }
+    if (cat !== "barber") { const pm = pictureMat(door.id.length * 7 + 3 + floor); b.add(new T.PlaneGeometry(1.2, 0.8), pm, -W / 2 + 0.02, 2.1, D * 0.45, 1, 1, 1, Math.PI / 2, 0, 0, false); }
     b.add(new T.CircleGeometry(0.25, 24), MAT.clock, 0, 2.7, D - 0.01, 1, 1, 1, Math.PI, 0, 0, false);
 
     // --- mobilya ve kırılabilirler
@@ -1705,8 +1749,8 @@
         addItem(room, "chair", ch, x, D - 1.6, 0.45, 10);
       }
       for (let i = 0; i < 4; i++) chair(room, -W / 2 + 1.2 + i * 0.7, 1.0, Math.PI / 2 * 0, false);
-      bs(b, GEO.box, im(0x8a5a33, 0.5), 0.6, 0.45, 0.6, W / 2 - 1.2, 0.22, 1.2); // sehpa
-      bs(b, GEO.box, im(0xf2f2f2, 0.8), 0.4, 0.02, 0.3, W / 2 - 1.2, 0.46, 1.2); // gazete
+      bs(b, GEO.box, im(0x8a5a33, 0.5), 0.6, 0.45, 0.6, W / 2 - 1.2, 0.22, 2.4); // sehpa
+      bs(b, GEO.box, im(0xf2f2f2, 0.8), 0.4, 0.02, 0.3, W / 2 - 1.2, 0.46, 2.4); // gazete
       room.keeper = { x: 0, z: D - 2.4 };
     },
     cafe(room, b, r) {
@@ -1769,7 +1813,7 @@
       addItem(room, "tv", tv, -0.5, D - 0.3, 0.3, 25, { screen: scr, col: { solid: false } });
       // kitaplık, saksı
       shelfUnit(room, W / 2 - 0.35, D * 0.7, -Math.PI / 2, 1.8, 2.1, 0x6b4a2b, [0xc0392b, 0x2a73b8, 0xe9d8a6, 0x2f8f4a, 0x1a1a1a], r, "bookshelf");
-      for (const [px, pz] of [[-W / 2 + 0.5, D - 0.5], [W / 2 - 0.5, 1.0]]) {
+      for (const [px, pz] of [[-W / 2 + 0.5, D - 0.5], [W / 2 - 0.5, D - 0.5]]) {
         const pg = new T.Group(); mk(GEO.cyl, im(0xa0522d, 0.8), 0.22, 0.45, 0.18, 0, 0.22, 0, pg);
         for (let k = 0; k < 7; k++) { const lf = mk(GEO.sphere, MAT.leaf, 0.1, 0.35, 0.06, Math.cos(k) * 0.1, 0.7, Math.sin(k) * 0.1, pg); lf.rotation.set(Math.sin(k) * 0.6, k, Math.cos(k) * 0.6); }
         addItem(room, "plant", pg, px, pz, 0.3, 8);
@@ -1781,13 +1825,84 @@
       addItem(room, "table", dt2, W / 2 - 2.6, 3.0, 0.9, 12, { cups: null });
       for (const [cx2, cz2, ry] of [[-0.6, -0.8, 0], [0.6, -0.8, 0], [-0.6, 0.8, Math.PI], [0.6, 0.8, Math.PI]]) chair(room, W / 2 - 2.6 + cx2, 3.0 + cz2, ry, false);
       // mutfak tezgâhı ve buzdolabı
-      bs(b, GEO.box, im(0xf2efe8, 0.5), 3, 0.9, 0.6, -W / 2 + 1.8, 0.45, 1.3, 0, 0, 0, true);
-      bs(b, GEO.box, IMAT.marble, 3.04, 0.04, 0.64, -W / 2 + 1.8, 0.92, 1.3);
-      room.cols.push({ box: true, x0: -W / 2 + 0.2, x1: -W / 2 + 3.4, z0: 0.95, z1: 1.65, solid: true });
-      food(room, "ekmek", -W / 2 + 1.2, 0.98, 1.3); food(room, "simit", -W / 2 + 2.2, 0.98, 1.3);
+      bs(b, GEO.box, im(0xf2efe8, 0.5), 0.6, 0.9, 3, -W / 2 + 0.5, 0.45, 4.3, 0, 0, 0, true);
+      bs(b, GEO.box, IMAT.marble, 0.64, 0.04, 3.04, -W / 2 + 0.5, 0.92, 4.3);
+      room.cols.push({ box: true, x0: -W / 2 + 0.15, x1: -W / 2 + 0.85, z0: 2.8, z1: 5.8, solid: true });
+      food(room, "ekmek", -W / 2 + 0.5, 0.98, 3.6); food(room, "simit", -W / 2 + 0.5, 0.98, 5.0);
       room.keeper = null;
     },
   };
+
+
+  // --- merdivenler: güney duvarı boyunca; çıkış doğuda (yukarı), iniş batıda (aşağı)
+  const stairMat = new T.MeshStandardMaterial({ color: 0xb9a68a, roughness: 0.7 });
+  const stairEdge = new T.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.6 });
+  const holeMat = new T.MeshBasicMaterial({ color: 0x120d0a });
+  function addStairs(room, b) {
+    const { W, H, floor, topFloor } = room, z0 = 0.15, z1 = 1.25, zc = (z0 + z1) / 2;
+    const rail = (x0, x1) => {
+      for (let x = x0; x <= x1 + 0.01; x += 0.6) bs(b, GEO.cyl8, MAT.darkMetal, 0.025, 0.95, 0.025, x, 0.48, z1 + 0.06);
+      bs(b, GEO.box, stairEdge, x1 - x0, 0.06, 0.08, (x0 + x1) / 2, 0.97, z1 + 0.06);
+      room.cols.push({ box: true, x0, x1, z0: z1, z1: z1 + 0.15, solid: true });
+    };
+    if (floor < topFloor) { // yukarı çıkan basamaklar
+      const x0 = W / 2 - 3.4, x1 = W / 2 - 0.2, n = 10, sl = (x1 - x0) / n, rise = H / n;
+      for (let i = 0; i < n; i++) {
+        bs(b, GEO.box, stairMat, sl, (i + 1) * rise, z1 - z0, x0 + (i + 0.5) * sl, (i + 1) * rise / 2, zc);
+        bs(b, GEO.box, stairEdge, 0.05, 0.03, z1 - z0, x0 + i * sl + 0.03, (i + 1) * rise, zc, 0, 0, 0, false);
+      }
+      bs(b, GEO.box, holeMat, 1.8, 0.02, z1 - z0 + 0.1, x1 - 0.9, H - 0.02, zc, 0, 0, 0, false); // tavandaki boşluk
+      rail(x0 + 0.9, x1);
+      room.cols.push({ box: true, x0, x1, z0, z1, solid: true, npcOnly: true });
+      room.up = { x0, x1, z0, z1 };
+    }
+    if (floor > 0) { // aşağı inen merdiven boşluğu
+      const x0 = -W / 2 + 0.2, x1 = -W / 2 + 3.4;
+      bs(b, GEO.box, holeMat, x1 - x0, 0.01, z1 - z0, (x0 + x1) / 2, 0.005, zc, 0, 0, 0, false);
+      for (let i = 1; i < 6; i++) bs(b, GEO.box, stairEdge, 0.05, 0.012, z1 - z0 - 0.05, x1 - i * 0.32, 0.012, zc, 0, 0, 0, false);
+      rail(x0, x1 - 0.9);
+      room.cols.push({ box: true, x0, x1, z0, z1, solid: true, npcOnly: true });
+      room.down = { x0, x1, z0, z1 };
+    }
+  }
+  function roomFloorY(room, x, z) {
+    const u = room.up, d = room.down;
+    if (u && x > u.x0 && x < u.x1 && z > u.z0 - 0.3 && z < u.z1) return clamp((x - u.x0) / (u.x1 - u.x0), 0, 1) * room.H * 0.62;
+    if (d && x > d.x0 && x < d.x1 && z > d.z0 - 0.3 && z < d.z1) return -clamp((d.x1 - x) / (d.x1 - d.x0), 0, 1) * 2.2;
+    return 0;
+  }
+  function populateRoom(room) {
+    if (room.keeper) spawnInside(room, "esnaf", room.keeper.x, room.keeper.z);
+    const n = room.cat === "home" ? 2 + Math.floor(Math.random() * 2) : room.cat === "cafe" ? 4 : room.cat === "barber" ? 3 : room.cat === "office" ? 3 : 2;
+    for (let i = 0; i < n; i++) {
+      for (let k = 0; k < 8; k++) {
+        const p = { x: rand(-room.W / 2 + 1, room.W / 2 - 1), z: rand(2.5, room.D - 1.2) };
+        if (!roomPush(room, Object.assign({}, p), 0.5) || k === 7) { spawnInside(room, room.cat === "home" ? "aile" : "musteri", p.x, p.z); break; }
+      }
+    }
+  }
+  function disposeRoom(room) {
+    iscene.remove(room.group);
+    room.group.traverse((o) => { if (o.isMesh && !o.isSkinnedMesh && o.geometry && o.parent === room.group && o.matrixAutoUpdate === false) o.geometry.dispose(); });
+    for (const f of g.fx) if (f.mesh.parent) f.mesh.parent.remove(f.mesh); g.fx.length = 0;
+  }
+  function changeFloor(dir) {
+    if (fading) return;
+    const old = g.inside, nf = old.floor + dir;
+    if (nf < 0 || nf > old.topFloor) return;
+    const room = buildInterior(old.door, nf);
+    fade(() => {
+      disposeRoom(old);
+      g.inside = room; iscene.add(room.group); iscene.add(goat.root, shadowBlob);
+      const go = g.goat;
+      if (dir > 0) { go.x = room.down.x1 + 0.7; go.yaw = Math.PI / 2; } else { go.x = room.up.x0 - 0.7; go.yaw = -Math.PI / 2; }
+      go.z = 0.75; go.y = 0; go.vy = 0; go.speed = 1; go.dashT = 0;
+      camYaw = go.yaw; camPos.set(go.x - Math.sin(go.yaw) * 3, 2.4, go.z);
+      populateRoom(room); syncRoomHud();
+      toast(room.title + (room.up ? " · merdiven yukarı çıkar" : " · en üst kat"));
+      sfx.jump();
+    });
+  }
 
   // --- kırma efektleri
   const debrisBox = new T.BoxGeometry(1, 1, 1), debrisCyl = new T.CylinderGeometry(1, 1, 1, 8);
@@ -1871,7 +1986,7 @@
     if (p.z > D - rad) { p.z = D - rad; hit = true; }
     if (p.z < rad && !(doorGap && p.allowDoor)) { p.z = rad; hit = true; }
     for (const c of room.cols) {
-      if (!c.solid) continue;
+      if (!c.solid || (c.npcOnly && p === g.goat)) continue;
       if (c.box) {
         if (p.x > c.x0 - rad && p.x < c.x1 + rad && p.z > c.z0 - rad && p.z < c.z1 + rad) {
           const dl = p.x - (c.x0 - rad), dr = c.x1 + rad - p.x, dn = p.z - (c.z0 - rad), df = c.z1 + rad - p.z, m = Math.min(dl, dr, dn, df);
@@ -1898,26 +2013,17 @@
       iscene.add(goat.root, shadowBlob);
       const go = g.goat; go.x = 0; go.z = 1.0; go.y = 0; go.vy = 0; go.yaw = 0; go.speed = 2; go.dashT = 0;
       camYaw = 0; camPos.set(0, 2.2, 0.4);
-      // insanlar
-      if (room.keeper) spawnInside(room, "esnaf", room.keeper.x, room.keeper.z);
-      const n = room.cat === "home" ? 2 + Math.floor(Math.random() * 2) : room.cat === "cafe" ? 4 : room.cat === "barber" ? 3 : 2;
-      for (let i = 0; i < n; i++) {
-        for (let k = 0; k < 8; k++) {
-          const p = { x: rand(-room.W / 2 + 1, room.W / 2 - 1), z: rand(2.5, room.D - 1.2) };
-          if (!roomPush(room, Object.assign({}, p), 0.5) || k === 7) { spawnInside(room, room.cat === "home" ? "aile" : "musteri", p.x, p.z); break; }
-        }
-      }
+      populateRoom(room);
       ui.room.hidden = false; syncRoomHud();
       toast(room.title + ": " + ROOM_TIPS[room.cat]);
+      if (room.up && !g.stairHint) { g.stairHint = true; setTimeout(() => { if (g.inside) toast("Sağ köşedeki merdivenden üst katlara çıkabilirsin!"); }, 2800); }
     });
   }
   function exitInterior() {
     if (fading) return;
     const room = g.inside;
     fade(() => {
-      iscene.remove(room.group);
-      room.group.traverse((o) => { if (o.isMesh && !o.isSkinnedMesh && o.geometry && o.parent === room.group && o.matrixAutoUpdate === false) o.geometry.dispose(); });
-      for (const f of g.fx) if (f.mesh.parent) f.mesh.parent.remove(f.mesh); g.fx.length = 0;
+      disposeRoom(room);
       scene.add(goat.root, shadowBlob);
       g.inside = null;
       const go = g.goat; go.x = g.street.x; go.z = g.street.z; go.yaw = g.street.yaw; go.y = CURB; go.speed = 3;
@@ -1945,7 +2051,9 @@
   function updateInterior(dt, go, fx, fz) {
     const room = g.inside; room.t += dt;
     // duvarlar, eşyalar; kapıdan çıkış
-    if (go.z < 1.0 && Math.abs(go.x) < DOOR_W / 2 + 0.4 && fz < -0.15 && go.speed > 0.3) { exitInterior(); return; }
+    if (room.floor === 0 && go.z < 1.0 && Math.abs(go.x) < DOOR_W / 2 + 0.4 && fz < -0.15 && go.speed > 0.3) { exitInterior(); return; }
+    if (room.up && go.z < room.up.z1 && go.x > room.up.x1 - 0.8 && fx > 0.2) { changeFloor(1); return; }
+    if (room.down && go.z < room.down.z1 && go.x < room.down.x0 + 1.0 && fx < -0.2) { changeFloor(-1); return; }
     const hitWall = roomPush(room, go, 0.45);
     if (hitWall && go.dashT > 0) { go.dashT = 0; g.shake = 0.15; }
     // eşyaya tosla
@@ -2042,7 +2150,7 @@
     // bir süre sonra bekçi gelir
     if (room.guardRoll === undefined) room.guardRoll = Math.random() < 0.45;
     if (!room.guardCame && room.guardRoll && room.t > 18 + (g.insideCount % 3) * 4) {
-      room.guardCame = true; const p = spawnInside(room, "bekci", 0, 0.6); p.yaw = 0;
+      room.guardCame = true; const p = room.floor === 0 ? spawnInside(room, "bekci", 0, 0.6) : spawnInside(room, "bekci", room.down.x1 + 0.6, 0.8); p.yaw = 0;
       toast("Bekçi geldi! Kaç ya da tosla!"); sfx.honk();
     }
   }
@@ -2078,7 +2186,7 @@
     const st = pickStart();
     g = {
       t: 0, score: 0, lives: 3, energy: 100, combo: 0, comboT: 0, hits: 0, carHits: 0, dist: 0, inv: 0, shake: 0,
-      inside: null, street: null, pendingEnter: null, driving: null, nearCar: null, handbrake: false, hornT: 0, ejectT: 0, carHint: false, driveHint: false, doorHint: false, enterHint: false, insideCount: 0,
+      inside: null, street: null, stairHint: false, pendingEnter: null, driving: null, nearCar: null, handbrake: false, hornT: 0, ejectT: 0, carHint: false, driveHint: false, doorHint: false, enterHint: false, insideCount: 0,
       startInfo: st, goat: { x: st.x, z: st.z, y: CURB, vy: 0, yaw: st.yaw, speed: 0, dashT: 0, cd: 0, stun: 0, phase: 0, jumps: 0, slow: 0 },
       people: [], vehicles: [], animals: [], pickups: [], birds: [], fx: [], waves: [], spawnT: 0, honkT: 0,
     };
@@ -2186,13 +2294,40 @@
     g.vehicles.push(Object.assign(v, { kind, axis, dir, lat, along, x, z, yaw, speed: cruise, cruise, state: "drive", wreckT: 0, hop: 0, hopV: 0, tilt: 0, latOff: 0, yawOff: 0, hitCd: 0, honked: 0 }));
   }
   let truckYaw = 0;
+  const lotSignMat = (() => { const [c, x] = cv(256, 64); x.fillStyle = "#1d4fa0"; x.fillRect(0, 0, 256, 64); x.fillStyle = "#fff"; x.font = "bold 40px Arial"; x.textAlign = "center"; x.fillText("P  OTOPARK", 128, 47); return new T.MeshStandardMaterial({ map: tex(c, true, false), roughness: 0.4 }); })();
+  // Park etmiş arabalar iki parçaya birleştirilir (gövde + cam); binince ayrıntılı araca dönüşür
+  const liteCache = new Map();
+  const liteMat = new T.MeshStandardMaterial({ vertexColors: true, metalness: 0.45, roughness: 0.38 });
+  function buildCarLite(kind, color) {
+    const k = kind + "|" + color;
+    if (!liteCache.has(k)) {
+      const src = buildCar(kind, color); src.root.updateMatrixWorld(true);
+      const body = [], glass = [];
+      src.root.traverse((o) => {
+        if (!o.isMesh) return;
+        const g2 = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone(); g2.applyMatrix4(o.matrixWorld);
+        for (const n of Object.keys(g2.attributes)) if (n !== "position" && n !== "normal") g2.deleteAttribute(n);
+        if (o.material === CARMAT.glass) { glass.push(g2); return; }
+        const c = o.material.color ? o.material.color.clone() : new T.Color(0x888888);
+        if (o.material === CARMAT.plate) c.setHex(0xe6e6e6);
+        const n = g2.attributes.position.count, arr = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+        g2.setAttribute("color", new T.BufferAttribute(arr, 3)); body.push(g2);
+      });
+      liteCache.set(k, { bg: T.BufferGeometryUtils.mergeBufferGeometries(body, false), gg: glass.length ? T.BufferGeometryUtils.mergeBufferGeometries(glass, false) : null, L: src.L, W: src.W, H: src.H });
+    }
+    const c = liteCache.get(k), root = new T.Group();
+    const m1 = new T.Mesh(c.bg, liteMat); m1.castShadow = true; m1.receiveShadow = true; root.add(m1);
+    if (c.gg) root.add(new T.Mesh(c.gg, CARMAT.glass));
+    return { root, body: null, wheels: [], L: c.L, W: c.W, H: c.H };
+  }
   function spawnParkedNear(go) {
     for (const c of chunks.values()) for (const sp of c.parked) {
-      if (sp.gone || sp.veh || Math.hypot(sp.x - go.x, sp.z - go.z) > 75) continue;
-      const v = buildCar(sp.kind, sp.color);
+      if (sp.gone || sp.veh || Math.hypot(sp.x - go.x, sp.z - go.z) > 70) continue;
+      const v = buildCarLite(sp.kind, sp.color);
       v.root.position.set(sp.x, 0, sp.z); v.root.rotation.y = sp.yaw; scene.add(v.root);
       Object.assign(v, { kind: sp.kind, axis: "free", dir: 1, lat: 0, along: 0, x: sp.x, z: sp.z, yaw: sp.yaw, speed: 0, cruise: 0, state: "abandoned", free: true, ownerless: true,
-        wreckT: 0, hop: 0, hopV: 0, tilt: 0, latOff: 0, yawOff: 0, hitCd: 0, honked: 0, spot: sp });
+        wreckT: 0, hop: 0, hopV: 0, tilt: 0, latOff: 0, yawOff: 0, hitCd: 0, honked: 0, spot: sp, lite: true, color: sp.color });
       g.vehicles.push(v); sp.veh = v;
     }
   }
@@ -2346,6 +2481,12 @@
   function boardCar(v) {
     if (g.driving || g.inside) return;
     const go = g.goat, spec = VEH_DRIVE[v.kind];
+    if (v.lite) { // ayrıntılı araca dönüştür (tekerlekler, farlar)
+      const full = buildCar(v.kind, v.color);
+      full.root.position.copy(v.root.position); full.root.rotation.copy(v.root.rotation);
+      scene.remove(v.root); scene.add(full.root);
+      Object.assign(v, { root: full.root, body: full.body, wheels: full.wheels, lite: false });
+    }
     v.yaw += v.yawOff || 0; v.yawOff = 0; v.latOff = 0; v.latPush = 0; v.hop = 0;
     v.state = "player"; v.free = true; v.axis = "free"; v.speed = 0;
     if (v.spot) v.spot.gone = true;
@@ -2988,7 +3129,7 @@
       const x0 = ch.cx * CELL + ROAD, z0 = ch.cz * CELL + ROAD, x1 = x0 + CELL - 2 * ROAD, z1 = z0 + CELL - 2 * ROAD;
       if (Math.hypot((x0 + x1) / 2 - go.x, (z0 + z1) / 2 - go.z) > range + 50) continue;
       const corners = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(([x, z]) => toMap(x, z));
-      mx.fillStyle = ch.type === "park" ? "#6f9a4a" : ch.type === "square" ? "#cdbfa6" : "#a9a39a";
+      mx.fillStyle = ch.type === "park" ? "#6f9a4a" : ch.type === "square" ? "#cdbfa6" : ch.type === "parking" ? "#6e7074" : "#a9a39a";
       mx.beginPath(); corners.forEach(([px, py], i) => (i ? mx.lineTo(px, py) : mx.moveTo(px, py))); mx.closePath(); mx.fill();
       for (const col of ch.cols) if (col.box) {
         const pts = [[col.x0, col.z0], [col.x1, col.z0], [col.x1, col.z1], [col.x0, col.z1]].map(([x, z]) => toMap(x, z));
@@ -3101,7 +3242,7 @@
     loadingText.textContent = "Şehir kuruluyor…";
     setTimeout(() => {
       toMenu();
-      if (location.hash === "#test") window.__k = { get g() { return g; }, action, useAnimal, get goat() { return goat; }, toggleCar, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
+      if (location.hash === "#test") window.__k = { get g() { return g; }, cellType, action, useAnimal, get goat() { return goat; }, toggleCar, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
       requestAnimationFrame((t) => { last = t; frame(t); });
     }, 30);
   }).catch((e) => { loadingText.textContent = "Bir dosya yüklenemedi (" + e.message + "). Sayfayı yenile."; console.error(e); });
