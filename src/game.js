@@ -1253,7 +1253,9 @@
     }
     return fetch(url).then((r) => { if (!r.ok) throw new Error(url); return r.arrayBuffer(); }).then(done);
   }
+  const failedModels = [];
   function loadModels() {
+    // Bir model yüklenemezse oyun durmaz; yerine yedek model kullanılır
     return Promise.all(Object.entries(MODELS).map(([name, def]) => getBuffer(def.url).then((buf) => new Promise((res, rej) => {
       gltfLoader.parse(buf, "", (gl) => {
         const holder = new T.Group(); holder.add(gl.scene);
@@ -1274,8 +1276,8 @@
         gl.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
         protos[name] = { scene: holder, clips: gl.animations, size: b2.getSize(new T.Vector3()) };
         res();
-      }, () => rej(new Error(def.url)));
-    }))));
+      }, (err) => rej(new Error(def.url + (err && err.message ? " — " + err.message : ""))));
+    })).catch((e) => { console.warn("Model yüklenemedi:", e); failedModels.push(def.url.replace("assets/", "")); })));
   }
   // Bekçinin (Mixamo) yürüme/koşma/durma hareketleri diğer insanlara aktarılır.
   // İskeletlerin dinlenme duruşları farklı olduğu için dünya uzayında fark yöntemiyle aktarılır.
@@ -1330,6 +1332,7 @@
     return out;
   }
   function shareLocomotion() {
+    if (!protos.guard || !protos.woman) return;
     const src = protos.guard.clips.filter((c) => /^(idle|walk|run)$/i.test(c.name));
     const rest = protos.guard.clips.find((c) => /tpose/i.test(c.name));
     const wRest = protos.woman.clips.find((c) => /tpose/i.test(c.name));
@@ -1344,8 +1347,10 @@
       scene.environment = pmrem.fromEquirectangular(t).texture; t.dispose();
     }).catch(() => {});
   }
+  const MODEL_FALLBACK = { woman: "guard", guard: "woman" };
+  const realModel = (name) => (protos[name] ? name : MODEL_FALLBACK[name] || name); // yön düzeltmesi için gerçek model adı
   function instance(name, tint) {
-    const p = protos[name];
+    const p = protos[name] || protos[MODEL_FALLBACK[name]];
     const root = T.SkeletonUtils.clone(p.scene);
     if (tint) root.traverse((o) => {
       if (!o.isMesh) return;
@@ -2027,7 +2032,7 @@
 
   // --- içerideki insanlar
   function spawnInside(room, kind, x, z) {
-    const model = kind === "bekci" ? "guard" : "woman";
+    const model = realModel(kind === "bekci" ? "guard" : "woman");
     const inst = instance(model, model === "guard" ? 0x8f9fca : pick([null, 0xf2e6da, 0xdfe6f2, 0xe8f0e0, 0xf0e0e0]));
     inst.root.position.set(x, 0, z); room.group.add(inst.root);
     play(inst, "idle", 1);
@@ -2319,7 +2324,7 @@
     const [x, z] = sidewalkPoint(cx, cz, s, inset);
     if (blockedAt(x, z, 0.4)) return;
     if (Math.hypot(x - g.goat.x, z - g.goat.z) < 7) return;
-    const model = kind === "bekci" ? "guard" : "woman";
+    const model = realModel(kind === "bekci" ? "guard" : "woman");
     const tint = model === "guard" ? 0x8f9fca : pick([null, null, 0xf2e6da, 0xdfe6f2, 0xe8f0e0, 0xf0e0e0]);
     const inst = instance(model, tint);
     inst.root.position.set(x, CURB, z);
@@ -2338,7 +2343,7 @@
     const along = along0 + (Math.random() < 0.7 ? 1 : -1) * rand(initial ? 30 : 55, initial ? 90 : 110);
     const lat = lineIdx * CELL + (axis === "z" ? -dir : dir) * LANE;
     const roll = Math.random();
-    const kind = roll < 0.08 ? "bus" : roll < 0.16 ? "truck" : roll < 0.2 ? "super" : roll < 0.23 ? "muscle" : roll < 0.42 ? "taxi" : roll < 0.72 ? "sedan" : "hatch";
+    const kind = roll < 0.08 ? "bus" : roll < 0.16 ? (protos.truck ? "truck" : "sedan") : roll < 0.2 ? "super" : roll < 0.23 ? "muscle" : roll < 0.42 ? "taxi" : roll < 0.72 ? "sedan" : "hatch";
     let v;
     if (kind === "bus") v = buildBus();
     else if (kind === "truck") { const p = protos.truck; const root = T.SkeletonUtils.clone(p.scene); const mixer = new T.AnimationMixer(root); if (p.clips[0]) mixer.clipAction(p.clips[0]).play(); v = { root, body: root, wheels: [], L: p.size.z > p.size.x ? p.size.z : p.size.x, W: 2.3, H: 2.8, mixer }; }
@@ -2399,6 +2404,7 @@
     }
   }
   function spawnAnimal(initial) {
+    if (!protos.fox) return;
     const kind = Math.random() < 0.6 ? "kopek" : "kedi";
     const [cx, cz] = randomCellNear(initial ? 10 : 35, initial ? 40 : 65);
     const [x, z] = sidewalkPoint(cx, cz, rand(0, 400), rand(1.5, 3));
@@ -2427,13 +2433,15 @@
     }
   }
   function spawnDancer(x, z) {
+    if (!protos.woman) return;
     const inst = instance("woman", pick([null, 0xf2e0f0, 0xe0f0ff]));
     inst.root.position.set(x, CURB, z); scene.add(inst.root);
     play(inst, "sambadance", 1);
-    g.people.push({ kind: "dansci", model: "woman", inst, root: inst.root, x, z, y: CURB, cx: 0, cz: 0, s: 0, inset: 2, dir: 1, hp: 1, mode: "path",
+    g.people.push({ kind: "dansci", model: realModel("woman"), inst, root: inst.root, x, z, y: CURB, cx: 0, cz: 0, s: 0, inset: 2, dir: 1, hp: 1, mode: "path",
       flying: false, vx: 0, vy: 0, vz: 0, spin: new T.Vector3(), fade: 1, flash: 0, bounced: 0, hitCd: 0, calm: 0, yaw: rand(0, 6.28) });
   }
   function spawnBird() {
+    if (!protos.stork) return;
     const inst = instance("stork");
     const go = g.goat, a = rand(0, 6.28);
     inst.root.position.set(go.x + Math.sin(a) * 40, rand(22, 32), go.z + Math.cos(a) * 40); scene.add(inst.root);
@@ -2595,7 +2603,7 @@
     const inst = instance("woman", pick([null, 0xf2e6da, 0xdfe6f2, 0xe8f0e0, 0xf0e0e0]));
     inst.root.position.set(x, groundY(x, z), z); scene.add(inst.root);
     play(inst, "run", 1);
-    g.people.push({ kind, model: "woman", inst, root: inst.root, x, z, y: groundY(x, z), cx: Math.floor(x / CELL), cz: Math.floor(z / CELL), s: 0, inset: 2.4, dir: 1, hp: 1, mode: "flee",
+    g.people.push({ kind, model: realModel("woman"), inst, root: inst.root, x, z, y: groundY(x, z), cx: Math.floor(x / CELL), cz: Math.floor(z / CELL), s: 0, inset: 2.4, dir: 1, hp: 1, mode: "flee",
       flying: false, vx: 0, vy: 0, vz: 0, spin: new T.Vector3(), fade: 1, flash: 0, bounced: 0, hitCd: 0.6, calm: 4, yaw: 0, wyaw: rand(0, 6.28) });
   }
   function carCrash(v, impact) {
@@ -3307,12 +3315,19 @@
   shadowBlob = new T.Mesh(new T.CircleGeometry(0.7, 20), new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, depthWrite: false }));
   shadowBlob.rotation.x = -Math.PI / 2; scene.add(shadowBlob);
   Promise.all([loadModels(), loadEnv()]).then(() => {
+    if (!protos.woman && !protos.guard) throw new Error(failedModels.join(", ") || "insan modelleri");
     shareLocomotion();
     loadingText.textContent = "Şehir kuruluyor…";
     setTimeout(() => {
       toMenu();
       if (location.hash === "#test") window.__k = { get g() { return g; }, cellType, action, useAnimal, get goat() { return goat; }, toggleCar, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
       requestAnimationFrame((t) => { last = t; frame(t); });
+      if (failedModels.length) setTimeout(() => toast("Bazı modeller yüklenemedi, yedekleri kullanılıyor: " + failedModels.join(", ")), 600);
     }, 30);
-  }).catch((e) => { loadingText.textContent = "Bir dosya yüklenemedi (" + e.message + "). Sayfayı yenile."; console.error(e); });
+  }).catch((e) => {
+    loadingText.textContent = location.protocol === "file:"
+      ? "Oyun dosyadan açılamaz; bir web sunucusundan (ör. GitHub Pages) aç."
+      : "Bir dosya yüklenemedi (" + e.message + "). Sayfayı yenile.";
+    console.error(e);
+  });
 })();

@@ -1740,7 +1740,12 @@
 			this.nodeNamesUsed = {}; // Use an THREE.ImageBitmapLoader if imageBitmaps are supported. Moves much of the
 			// expensive work of uploading a texture to the GPU off the main thread.
 
-			if ( typeof createImageBitmap !== 'undefined' && /Firefox/.test( navigator.userAgent ) === false ) {
+			// Keçi Oyunu yaması: Safari/iOS'ta createImageBitmap seçenekleri desteklenmediği için dokular yüklenemiyordu
+			// (three.js r132+ ile aynı düzeltme). Safari ve tüm iOS tarayıcılarında klasik TextureLoader kullanılır.
+			const isSafari = /Safari/i.test( navigator.userAgent ) && ! /Chrome|Chromium|Android/i.test( navigator.userAgent );
+			const isIOS = /iPad|iPhone|iPod/.test( navigator.userAgent ) || ( navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 );
+
+			if ( typeof createImageBitmap !== 'undefined' && /Firefox/.test( navigator.userAgent ) === false && ! isSafari && ! isIOS ) {
 
 				this.textureLoader = new THREE.ImageBitmapLoader( this.options.manager );
 
