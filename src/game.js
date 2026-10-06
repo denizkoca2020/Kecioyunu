@@ -2143,7 +2143,7 @@
       if (Math.hypot(f.x - go.x, f.z - go.z) < 0.9 && go.y + 1.3 > f.y - 0.4) {
         f.eaten = true; room.group.remove(f.group); room.mem.eaten.add(f.idx);
         g.energy = Math.min(100, g.energy + 20); g.score += 5; sfx.yum();
-        popText(f.x, 2, f.z, f.kind === "ekmek" ? "Ekmek! +Enerji" : "Simit! +Enerji", "#8e5b2a", 28);
+        popText(f.x, 2, f.z, f.kind === "ekmek" ? "Ekmek! +5" : "Simit! +5", "#8e5b2a", 28);
       }
     }
     // devrilen ve kayan eşyaların animasyonu
@@ -3205,7 +3205,6 @@
     if (g.inside) { // --- iç mekân
       updateInterior(dt, go, fx, fz);
       if (mode !== "play") return;
-      g.energy -= 2 * dt; if (g.energy <= 0) { g.energy = 0; gameOver("Keçinin enerjisi bitti!"); return; }
       updateFx(dt); syncHud(); return;
     }
     handleDoors(go, fx, fz, dt);
@@ -3238,16 +3237,13 @@
       pk.spin.rotation.y += dt * 2; pk.spin.position.y = 0.7 + Math.sin(pk.t * 3) * 0.12;
       const d = Math.hypot(go.x - pk.x, go.z - pk.z);
       if (d < 1.4 && go.y < 2) {
-        if (pk.type === "simit") { g.energy = Math.min(100, g.energy + 35); g.score += 5; sfx.yum(); popText(pk.x, 2, pk.z, "Simit! +Enerji", "#8e5b2a", 30); }
+        if (pk.type === "simit") { g.energy = Math.min(100, g.energy + 35); g.score += 5; sfx.yum(); popText(pk.x, 2, pk.z, "Simit! +5", "#8e5b2a", 30); }
         else { g.lives = Math.min(3, g.lives + 1); sfx.heart(); popText(pk.x, 2, pk.z, "+1 can", "#d6402b", 32); }
         scene.remove(pk.root); g.pickups.splice(i, 1); continue;
       }
       if (d > 110) { scene.remove(pk.root); g.pickups.splice(i, 1); }
     }
 
-    // --- enerji
-    g.energy -= (3 + Math.min(g.t * 0.012, 3)) * dt * (g.driving ? 0.5 : 1);
-    if (g.energy <= 0) { g.energy = 0; gameOver("Keçinin enerjisi bitti!"); return; }
 
     // --- nüfus
     g.spawnT -= dt;

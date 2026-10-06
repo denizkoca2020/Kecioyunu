@@ -74,7 +74,7 @@ Her hayvan kapı kırabilir, iç mekânlara girebilir ve araba kullanabilir. Kla
 - Araba 25, taksi 30, hot rod 45, süper araba 50, kamyon 45, otobüs 60 puan. Toslanan araç savrulur, alarmı çalar, dörtlüleri yanar.
 - Art arda toslamalar kombo yapar (x5'e kadar). Uçan biri başkasına çarparsa o da uçar.
 - Hareket eden araç çarparsa ya da bekçi yakalarsa 1 can gider. Çöp kutusu, baba ve bariyerlere çarpmak da can götürür; üstlerinden zıpla.
-- Enerji koştukça azalır. Toslamak ve **simit** yemek doldurur. **Kırmızı elma** 1 can verir.
+- Enerji yoktur: yemek yemek zorunlu değildir, hayvan aç kalıp ölmez. **Simit** ve ekmek puan verir, **kırmızı elma** 1 can verir.
 
 ## Teknik
 
