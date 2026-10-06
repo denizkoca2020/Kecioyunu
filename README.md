@@ -17,7 +17,9 @@ iPad için 3B sonsuz koşu oyunu. Keçi şehre iniyor: caddelerde istediğin yö
 - Balkonlu apartmanlar; zemin katlarda bakkal, fırın, eczane, berber, çay ocağı, kasap, manav gibi dükkânlar.
 - Parklar (çeşme, banklar) ve saat kuleli meydanlar. Çatılarda su depoları ve çanak antenler.
 - Cadde kenarlarında iki tarafa sık ve rastgele park etmiş arabalar; bazı bloklar araçlarla dolu otopark alanıdır.
+- Hot Wheels tarzı araçlar: parlak şeker renklerinde **süper arabalar** (kama gövde, arka kanat, yarış şeritleri ve numarası, büyük arka tekerlek) ve **hot rod'lar** (kaputtan çıkan krom motor, yan alev desenleri, krom egzozlar). Otoparklardaki araçların yaklaşık üçte biri böyledir, caddelerde ve trafikte de ara sıra görünürler. Binilebilirler: süper araba saatte 140 km'ye, hot rod 120 km'ye çıkar.
 - Cadde kenarlarında iki tarafa sık ve rastgele park etmiş arabalar; bazı bloklar araçlarla dolu otopark alanıdır.
+- Hot Wheels tarzı araçlar: parlak şeker renklerinde **süper arabalar** (kama gövde, arka kanat, yarış şeritleri ve numarası, büyük arka tekerlek) ve **hot rod'lar** (kaputtan çıkan krom motor, yan alev desenleri, krom egzozlar). Otoparklardaki araçların yaklaşık üçte biri böyledir, caddelerde ve trafikte de ara sıra görünürler. Binilebilirler: süper araba saatte 140 km'ye, hot rod 120 km'ye çıkar.
 - Trafik: sedan, hatchback, sarı taksi, otobüs ve kamyon. Araçlar şeritlerinde gider, önlerine çıkınca fren yapıp korna çalar.
 - İnsanlar kaldırımlarda yürür, keçiyi görünce kaçar. Meydanlarda sokak dansçısı samba yapar. Bekçiler keçiyi kovalar; ilk 25 saniye bekçi çıkmaz, sonra aynı anda en fazla 2 (3 dakikadan sonra 3) bekçi olur.
 - Hayvanlar (aynı anda en fazla 2 köpek/kedi): sokak köpekleri yakına gelince havlayıp peşinden koşar, kediler kaçar, güvercinler havalanır, leylekler tepede süzülür.
@@ -60,7 +62,7 @@ Her hayvan kapı kırabilir, iç mekânlara girebilir ve araba kullanabilir. Kla
 ## Kurallar
 
 - Yaya 10, dansçı 15, koşucu 20, bekçi 40 puan (bekçiye iki kez toslamak gerekir).
-- Araba 25, taksi 30, kamyon 45, otobüs 60 puan. Toslanan araç savrulur, alarmı çalar, dörtlüleri yanar.
+- Araba 25, taksi 30, hot rod 45, süper araba 50, kamyon 45, otobüs 60 puan. Toslanan araç savrulur, alarmı çalar, dörtlüleri yanar.
 - Art arda toslamalar kombo yapar (x5'e kadar). Uçan biri başkasına çarparsa o da uçar.
 - Hareket eden araç çarparsa ya da bekçi yakalarsa 1 can gider. Çöp kutusu, baba ve bariyerlere çarpmak da can götürür; üstlerinden zıpla.
 - Enerji koştukça azalır. Toslamak ve **simit** yemek doldurur. **Kırmızı elma** 1 can verir.

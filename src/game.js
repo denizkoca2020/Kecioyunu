@@ -579,7 +579,11 @@
     // park edilmiş arabalar (park şeridi)
     // park edilmiş arabalar: keçi yaklaşınca binilebilir gerçek araçlara dönüşür
     const parked = [];
-    const parkSpot = (x, z, yaw) => parked.push({ x, z, yaw, kind: ["sedan", "hatch", "sedan", "taxi"][Math.floor(r() * 4)], color: CAR_COLORS[Math.floor(r() * CAR_COLORS.length)], veh: null, gone: false });
+    const parkSpot = (x, z, yaw, hwChance = 0.06) => {
+      const hw = r() < hwChance; // ara sıra Hot Wheels tarzı araç
+      parked.push({ x, z, yaw, kind: hw ? HW_KINDS[Math.floor(r() * 2)] : ["sedan", "hatch", "sedan", "taxi"][Math.floor(r() * 4)],
+        color: hw ? HW_COLORS[Math.floor(r() * HW_COLORS.length)] : CAR_COLORS[Math.floor(r() * CAR_COLORS.length)], veh: null, gone: false });
+    };
     // cadde kenarları: iki tarafta sık ve rastgele
     const jit = () => (r() - 0.5) * 0.06;
     for (let s = oz + ROAD + 9; s < oz + CELL - ROAD - 7; s += 5.4 + r() * 0.8) {
@@ -609,7 +613,7 @@
       for (const [rz, yaw] of rows) {
         for (let x = ix0 + 2.5; x < ix1 - 2.5; x += 2.7) {
           b.add(GEO.box, MAT.white, x - 1.35, CURB + 0.02, rz, 0.12, 0.02, 5, 0, 0, 0, false);
-          if (r() < 0.6) parkSpot(x + (r() - 0.5) * 0.2, rz + (r() - 0.5) * 0.3, yaw + (r() - 0.5) * 0.08);
+          if (r() < 0.6) parkSpot(x + (r() - 0.5) * 0.2, rz + (r() - 0.5) * 0.3, yaw + (r() - 0.5) * 0.08, 0.4);
         }
       }
       b.add(GEO.box, MAT.white, cm, CURB + 0.02, pz, ix1 - ix0 - 6, 0.02, 0.15, 0, 0, 0, false);
@@ -709,6 +713,34 @@
   // ================= Araçlar (prosedürel) =================
   const CAR_COLORS = [0xe8e8e8, 0x1a1a1a, 0x8c949a, 0x9c1c1c, 0x1f3b73, 0xc7c2b8, 0x2e4a3a, 0x5a5f66, 0xffffff];
   const paintCache = new Map();
+  // Hot Wheels tarzı parlak şeker boyalar
+  const HW_COLORS = [0xff2a6d, 0x00d8ff, 0x76ff03, 0xff6d00, 0xffe600, 0x8c4dff, 0x2979ff, 0xff1744, 0x00e676, 0xff4081];
+  const HW_KINDS = ["super", "muscle"];
+  const isHW = (kind) => kind === "super" || kind === "muscle";
+  const candyCache = new Map();
+  function candy(color) {
+    if (!candyCache.has(color)) candyCache.set(color, new T.MeshPhysicalMaterial({ color, metalness: 0.25, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 0.9 }));
+    return candyCache.get(color);
+  }
+  const DECAL = {
+    flame: (() => { // yan alev deseni
+      const [c, x] = cv(512, 128);
+      const grad = x.createLinearGradient(0, 0, 512, 0); grad.addColorStop(0, "#fff36b"); grad.addColorStop(0.35, "#ffb300"); grad.addColorStop(0.7, "#ff5a00"); grad.addColorStop(1, "rgba(220,0,0,0)");
+      x.fillStyle = grad; x.beginPath(); x.moveTo(0, 30); 
+      for (let i = 0; i < 6; i++) { const tx = 120 + i * 70; x.quadraticCurveTo(tx - 20, 10 + (i % 2) * 10, tx + 30 + i * 6, 18 + i * 3); x.quadraticCurveTo(tx + 10, 50, tx + 20, 60); }
+      for (let i = 5; i >= 0; i--) { const tx = 120 + i * 70; x.quadraticCurveTo(tx + 10, 76, tx + 34 + i * 6, 108 - i * 3); x.quadraticCurveTo(tx - 20, 116 - (i % 2) * 10, tx - 40, 98); }
+      x.lineTo(0, 98); x.closePath(); x.fill();
+      x.strokeStyle = "rgba(120,0,0,0.6)"; x.lineWidth = 3; x.stroke();
+      return new T.MeshStandardMaterial({ map: tex(c, true, false), transparent: true, roughness: 0.25, metalness: 0.2, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    })(),
+    number: [7, 23, 55, 88, 99].map((n) => { // kapıda yarış numarası
+      const [c, x] = cv(128, 128);
+      x.fillStyle = "#fff"; x.beginPath(); x.arc(64, 64, 58, 0, 7); x.fill(); x.lineWidth = 8; x.strokeStyle = "#111"; x.stroke();
+      x.fillStyle = "#111"; x.font = "bold 66px Arial"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(String(n), 64, 68);
+      return new T.MeshStandardMaterial({ map: tex(c, true, false), transparent: true, roughness: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    }),
+  };
+  const STRIPE = { white: new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }), black: new T.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 }) };
   function paint(color) {
     if (!paintCache.has(color)) paintCache.set(color, new T.MeshPhysicalMaterial({ color, metalness: 0.55, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 }));
     return paintCache.get(color);
@@ -730,6 +762,14 @@
   function sideShape(profile) { const s = new T.Shape(); s.moveTo(profile[0][0], profile[0][1]); for (let i = 1; i < profile.length; i++) s.lineTo(profile[i][0], profile[i][1]); return s; }
   // Profil: (z boyunca uzunluk, y yükseklik). Araç +z yönüne bakar.
   const PROFILES = {
+    super: { L: 4.5, W: 1.98, low: true,
+      body: [[-2.25, 0.26], [2.25, 0.26], [2.33, 0.4], [2.12, 0.56], [0.95, 0.76], [-1.55, 0.86], [-2.25, 0.82], [-2.32, 0.5]],
+      cabin: [[0.9, 0.74], [0.18, 1.08], [-0.85, 1.1], [-1.5, 0.84]],
+      roof: [[0.2, 1.05], [0.15, 1.13], [-0.85, 1.15], [-0.9, 1.08]] },
+    muscle: { L: 4.7, W: 1.92,
+      body: [[-2.35, 0.32], [2.35, 0.32], [2.38, 0.64], [2.22, 0.84], [0.7, 0.9], [-1.7, 0.94], [-2.35, 0.9], [-2.38, 0.6]],
+      cabin: [[0.62, 0.9], [0.18, 1.26], [-1.0, 1.28], [-1.55, 0.93]],
+      roof: [[0.2, 1.24], [0.15, 1.32], [-1.0, 1.34], [-1.05, 1.26]] },
     sedan: { L: 4.6, W: 1.8,
       body: [[-2.3, 0.32], [2.3, 0.32], [2.33, 0.62], [2.22, 0.84], [1.2, 0.97], [-1.7, 1.0], [-2.28, 0.96], [-2.33, 0.62]],
       cabin: [[1.18, 0.96], [0.6, 1.4], [-0.95, 1.42], [-1.68, 0.99]],
@@ -751,7 +791,9 @@
   function buildCar(kind, color) {
     const P = PROFILES[kind === "taxi" ? "sedan" : kind];
     const root = new T.Group(), body = new T.Group(); root.add(body);
-    const paintMat = paint(kind === "taxi" ? 0xf5c518 : color);
+    const hw = isHW(kind);
+    const paintMat = hw ? candy(color) : paint(kind === "taxi" ? 0xf5c518 : color);
+    const lightY = kind === "super" ? 0.46 : 0.72, bumpY = kind === "super" ? 0.32 : 0.42, mirY = kind === "super" ? 0.86 : 1.0;
     const shell = new T.Mesh(extrudeProfile(P.body, P.W - 0.16, 0.08), paintMat); body.add(shell);
     const cabin = new T.Mesh(extrudeProfile(P.cabin, P.W - 0.36, 0.05), CARMAT.glass); body.add(cabin);
     const roof = new T.Mesh(extrudeProfile(P.roof, P.W - 0.3, 0.04), paintMat); body.add(roof);
@@ -760,31 +802,50 @@
     pil(P.cabin[0][0] - 0.05, P.cabin[0][1], P.cabin[1][0], P.cabin[1][1] + 0.04);
     pil((P.cabin[0][0] + P.cabin[3][0]) / 2 + 0.1, P.cabin[0][1], (P.cabin[0][0] + P.cabin[3][0]) / 2 + 0.05, P.cabin[1][1] + 0.04);
     pil(P.cabin[3][0] + 0.05, P.cabin[3][1], P.cabin[2][0], P.cabin[2][1] + 0.04);
-    for (const s2 of [-1, 1]) { const h = new T.Mesh(GEO.box, CARMAT.trim); h.scale.set(0.02, 0.03, 0.18); h.position.set(s2 * (P.W / 2 + 0.02), 0.86, 0.15); body.add(h); const h2 = h.clone(); h2.position.z = -0.95; body.add(h2); } // kapı kolları
+    for (const s2 of [-1, 1]) { const h = new T.Mesh(GEO.box, CARMAT.trim); h.scale.set(0.02, 0.03, 0.18); h.position.set(s2 * (P.W / 2 + 0.02), kind === "super" ? 0.66 : 0.86, 0.15); body.add(h); const h2 = h.clone(); h2.position.z = -0.95; body.add(h2); } // kapı kolları
     // tamponlar ve detaylar
-    const bump = (z) => { const m = new T.Mesh(GEO.box, CARMAT.trim); m.scale.set(P.W - 0.05, 0.18, 0.18); m.position.set(0, 0.42, z); body.add(m); };
+    const bump = (z) => { const m = new T.Mesh(GEO.box, hw ? CARMAT.chrome : CARMAT.trim); m.scale.set(P.W - 0.05, kind === "super" ? 0.1 : 0.18, 0.18); m.position.set(0, bumpY, z); body.add(m); };
     bump(P.L / 2 + 0.02); bump(-P.L / 2 - 0.02);
     for (const s of [-1, 1]) {
-      const h = new T.Mesh(GEO.box, CARMAT.head); h.scale.set(0.42, 0.12, 0.06); h.position.set(s * 0.6, 0.72, P.L / 2 + 0.05); body.add(h);
-      const t = new T.Mesh(GEO.box, CARMAT.tail); t.scale.set(0.4, 0.14, 0.06); t.position.set(s * 0.6, 0.78, -P.L / 2 - 0.05); body.add(t); t.userData.tail = true;
-      const mir = new T.Mesh(GEO.box, paintMat); mir.scale.set(0.2, 0.1, 0.08); mir.position.set(s * (P.W / 2 + 0.05), 1.0, 0.75); body.add(mir);
-      const strip = new T.Mesh(GEO.box, CARMAT.trim); strip.scale.set(0.03, 0.06, P.L * 0.55); strip.position.set(s * (P.W / 2), 0.55, 0); body.add(strip);
+      const h = new T.Mesh(GEO.box, CARMAT.head); h.scale.set(0.42, kind === "super" ? 0.06 : 0.12, 0.06); h.position.set(s * 0.6, lightY, P.L / 2 + (kind === "super" ? 0.0 : 0.05)); body.add(h);
+      const t = new T.Mesh(GEO.box, CARMAT.tail); t.scale.set(kind === "super" ? 0.6 : 0.4, kind === "super" ? 0.07 : 0.14, 0.06); t.position.set(s * 0.6, kind === "super" ? 0.62 : 0.78, -P.L / 2 - 0.05); body.add(t); t.userData.tail = true;
+      const mir = new T.Mesh(GEO.box, paintMat); mir.scale.set(0.2, 0.1, 0.08); mir.position.set(s * (P.W / 2 + 0.05), mirY, kind === "super" ? 0.55 : 0.75); body.add(mir);
+      const strip = new T.Mesh(GEO.box, hw ? CARMAT.chrome : CARMAT.trim); strip.scale.set(0.03, 0.06, P.L * 0.55); strip.position.set(s * (P.W / 2), kind === "super" ? 0.36 : 0.55, 0); body.add(strip);
     }
-    const grille = new T.Mesh(GEO.box, CARMAT.trim); grille.scale.set(0.8, 0.14, 0.04); grille.position.set(0, 0.6, P.L / 2 + 0.06); body.add(grille);
-    for (const z of [P.L / 2 + 0.12, -P.L / 2 - 0.12]) { const pl = new T.Mesh(new T.PlaneGeometry(0.52, 0.11), CARMAT.plate); pl.position.set(0, 0.42, z); if (z < 0) pl.rotation.y = Math.PI; body.add(pl); }
+    const grille = new T.Mesh(GEO.box, CARMAT.trim); grille.scale.set(0.8, 0.14, 0.04); grille.position.set(0, kind === "super" ? 0.36 : 0.6, P.L / 2 + 0.06); body.add(grille);
+    for (const z of [P.L / 2 + 0.12, -P.L / 2 - 0.12]) { const pl = new T.Mesh(new T.PlaneGeometry(0.52, 0.11), CARMAT.plate); pl.position.set(0, bumpY + (kind === "super" ? 0.12 : 0), z); if (z < 0) pl.rotation.y = Math.PI; body.add(pl); }
     if (kind === "taxi") {
       const sign = new T.Mesh(GEO.box, CARMAT.taxiSign); sign.scale.set(0.7, 0.2, 0.3); sign.position.set(0, 1.58, -0.1); body.add(sign);
       const ch = new T.Mesh(GEO.box, CARMAT.trim); ch.scale.set(0.04, 0.12, P.L * 0.5); ch.position.set(P.W / 2 + 0.01, 0.62, 0); body.add(ch);
     }
+    if (kind === "super") { // arka kanat, hava girişleri, yarış şeritleri, numara
+      const wing = new T.Mesh(GEO.box, paintMat); wing.scale.set(P.W - 0.1, 0.05, 0.42); wing.position.set(0, 1.08, -P.L / 2 + 0.3); body.add(wing);
+      for (const s2 of [-0.55, 0.55]) { const st = new T.Mesh(GEO.box, STRIPE.black); st.scale.set(0.06, 0.3, 0.12); st.position.set(s2, 0.92, -P.L / 2 + 0.32); body.add(st); }
+      for (const s2 of [-1, 1]) {
+        const intake = new T.Mesh(GEO.box, STRIPE.black); intake.scale.set(0.04, 0.2, 0.7); intake.position.set(s2 * (P.W / 2 - 0.02), 0.55, -0.9); body.add(intake);
+        const num = new T.Mesh(new T.CircleGeometry(0.23, 24), DECAL.number[Math.abs(color) % DECAL.number.length]); num.position.set(s2 * (P.W / 2 - 0.01), 0.55, 0.05); num.rotation.y = s2 * Math.PI / 2; body.add(num);
+      }
+      for (const sx2 of [-0.22, 0.22]) { const sp = new T.Mesh(GEO.box, STRIPE.white); sp.scale.set(0.16, 0.02, 1.4); sp.position.set(sx2, 0.7, 1.45); sp.rotation.x = 0.16; body.add(sp); const sp2 = sp.clone(); sp2.scale.z = 1.0; sp2.position.set(sx2, 1.16, -0.35); sp2.rotation.x = 0; body.add(sp2); }
+    }
+    if (kind === "muscle") { // kaputtan fırlayan krom motor, alevler, egzozlar
+      const blower = new T.Mesh(GEO.box, CARMAT.chrome); blower.scale.set(0.55, 0.28, 0.7); blower.position.set(0, 1.0, 1.35); body.add(blower);
+      const scoop = new T.Mesh(GEO.box, STRIPE.black); scoop.scale.set(0.45, 0.16, 0.3); scoop.position.set(0, 1.22, 1.45); body.add(scoop);
+      for (let i = 0; i < 4; i++) { const st = new T.Mesh(GEO.cyl8, CARMAT.chrome); st.scale.set(0.05, 0.22, 0.05); st.position.set(-0.15 + i * 0.1, 1.38, 1.45); body.add(st); }
+      for (const s2 of [-1, 1]) {
+        const fl = new T.Mesh(new T.PlaneGeometry(2.6, 0.5), DECAL.flame); fl.position.set(s2 * (P.W / 2 + 0.005), 0.62, 0.5); fl.rotation.y = s2 * Math.PI / 2; if (s2 < 0) fl.scale.x = -1; body.add(fl);
+        const ex = new T.Mesh(GEO.cyl8, CARMAT.chrome); ex.scale.set(0.06, 1.6, 0.06); ex.rotation.x = Math.PI / 2; ex.position.set(s2 * (P.W / 2 + 0.05), 0.3, 0.2); body.add(ex);
+      }
+    }
     const wheels = [];
     const wz = P.L / 2 - 0.82;
     for (const [sx, sz] of [[-1, wz], [1, wz], [-1, -wz], [1, -wz]]) {
-      const w = new T.Group(); w.position.set(sx * (P.W / 2 - 0.12), 0.34, sz);
-      w.add(new T.Mesh(wheelGeo, CARMAT.tire)); const rim = new T.Mesh(rimGeo, CARMAT.rim); rim.position.x = sx * 0.01; w.add(rim);
+      const ws = hw ? (sz > 0 ? 0.95 : kind === "muscle" ? 1.3 : 1.15) : 1; // büyük arka lastikler
+      const w = new T.Group(); w.position.set(sx * (P.W / 2 - 0.12), 0.34 * ws, sz); w.scale.set(hw ? 1.25 : 1, ws, ws);
+      w.add(new T.Mesh(wheelGeo, CARMAT.tire)); const rim = new T.Mesh(rimGeo, hw ? CARMAT.chrome : CARMAT.rim); rim.position.x = sx * 0.01; w.add(rim);
       root.add(w); wheels.push(w);
     }
     root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    return { root, body, wheels, L: P.L, W: P.W, H: 1.5 };
+    return { root, body, wheels, L: P.L, W: P.W, H: kind === "super" ? 1.15 : 1.5 };
   }
   function buildBus() {
     const root = new T.Group(), body = new T.Group(); root.add(body);
@@ -2163,7 +2224,7 @@
     bekci:  { pts: 40, hp: 2, model: "guard", walk: 1.3, chase: 5.6 },
   };
   const VEH = {
-    sedan: { pts: 25 }, hatch: { pts: 25 }, taxi: { pts: 30 }, bus: { pts: 60 }, truck: { pts: 45 },
+    sedan: { pts: 25 }, hatch: { pts: 25 }, taxi: { pts: 30 }, super: { pts: 50 }, muscle: { pts: 45 }, bus: { pts: 60 }, truck: { pts: 45 },
   };
   const DASH = 0.38, DASH_CD = 0.55, GRAV = 22;
   let mode = "loading", g = null, goat = null, shadowBlob = null;
@@ -2277,11 +2338,11 @@
     const along = along0 + (Math.random() < 0.7 ? 1 : -1) * rand(initial ? 30 : 55, initial ? 90 : 110);
     const lat = lineIdx * CELL + (axis === "z" ? -dir : dir) * LANE;
     const roll = Math.random();
-    const kind = roll < 0.08 ? "bus" : roll < 0.16 ? "truck" : roll < 0.38 ? "taxi" : roll < 0.7 ? "sedan" : "hatch";
+    const kind = roll < 0.08 ? "bus" : roll < 0.16 ? "truck" : roll < 0.2 ? "super" : roll < 0.23 ? "muscle" : roll < 0.42 ? "taxi" : roll < 0.72 ? "sedan" : "hatch";
     let v;
     if (kind === "bus") v = buildBus();
     else if (kind === "truck") { const p = protos.truck; const root = T.SkeletonUtils.clone(p.scene); const mixer = new T.AnimationMixer(root); if (p.clips[0]) mixer.clipAction(p.clips[0]).play(); v = { root, body: root, wheels: [], L: p.size.z > p.size.x ? p.size.z : p.size.x, W: 2.3, H: 2.8, mixer }; }
-    else v = buildCar(kind, pick(CAR_COLORS));
+    else { const col = isHW(kind) ? pick(HW_COLORS) : pick(CAR_COLORS); v = buildCar(kind, col); v.color = col; }
     const x = axis === "z" ? lat : along, z = axis === "z" ? along : lat;
     // aynı şeritte yakın araç varsa kurma
     for (const o of g.vehicles) if (!o.free && Math.hypot(o.x - x, o.z - z) < 14) return;
@@ -2290,7 +2351,7 @@
     const yaw = axis === "z" ? (dir > 0 ? 0 : Math.PI) : (dir > 0 ? Math.PI / 2 : -Math.PI / 2);
     v.root.rotation.y = yaw + (kind === "truck" ? truckYaw : 0);
     scene.add(v.root);
-    const cruise = kind === "bus" ? rand(7, 9) : kind === "truck" ? rand(8, 10) : rand(10, 14);
+    const cruise = kind === "bus" ? rand(7, 9) : kind === "truck" ? rand(8, 10) : isHW(kind) ? rand(13, 16) : rand(10, 14);
     g.vehicles.push(Object.assign(v, { kind, axis, dir, lat, along, x, z, yaw, speed: cruise, cruise, state: "drive", wreckT: 0, hop: 0, hopV: 0, tilt: 0, latOff: 0, yawOff: 0, hitCd: 0, honked: 0 }));
   }
   let truckYaw = 0;
@@ -2298,14 +2359,16 @@
   // Park etmiş arabalar iki parçaya birleştirilir (gövde + cam); binince ayrıntılı araca dönüşür
   const liteCache = new Map();
   const liteMat = new T.MeshStandardMaterial({ vertexColors: true, metalness: 0.45, roughness: 0.38 });
+  const liteMatHW = new T.MeshStandardMaterial({ vertexColors: true, metalness: 0.25, roughness: 0.22, envMapIntensity: 0.9 });
   function buildCarLite(kind, color) {
     const k = kind + "|" + color;
     if (!liteCache.has(k)) {
       const src = buildCar(kind, color); src.root.updateMatrixWorld(true);
-      const body = [], glass = [];
+      const body = [], glass = [], decals = [];
       src.root.traverse((o) => {
         if (!o.isMesh) return;
         const g2 = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone(); g2.applyMatrix4(o.matrixWorld);
+        if (o.material.map && o.material.transparent) { decals.push({ g: g2, m: o.material }); return; } // alev ve numara çıkartmaları
         for (const n of Object.keys(g2.attributes)) if (n !== "position" && n !== "normal") g2.deleteAttribute(n);
         if (o.material === CARMAT.glass) { glass.push(g2); return; }
         const c = o.material.color ? o.material.color.clone() : new T.Color(0x888888);
@@ -2314,10 +2377,14 @@
         for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
         g2.setAttribute("color", new T.BufferAttribute(arr, 3)); body.push(g2);
       });
-      liteCache.set(k, { bg: T.BufferGeometryUtils.mergeBufferGeometries(body, false), gg: glass.length ? T.BufferGeometryUtils.mergeBufferGeometries(glass, false) : null, L: src.L, W: src.W, H: src.H });
+      // aynı malzemeli çıkartmalar tek parçaya birleşir
+      const byMat = new Map(); for (const d of decals) { if (!byMat.has(d.m)) byMat.set(d.m, []); for (const n of Object.keys(d.g.attributes)) if (!["position", "normal", "uv"].includes(n)) d.g.deleteAttribute(n); byMat.get(d.m).push(d.g); }
+      const mergedDecals = [...byMat].map(([m, gs]) => ({ m, g: T.BufferGeometryUtils.mergeBufferGeometries(gs, false) }));
+      liteCache.set(k, { bg: T.BufferGeometryUtils.mergeBufferGeometries(body, false), gg: glass.length ? T.BufferGeometryUtils.mergeBufferGeometries(glass, false) : null, decals: mergedDecals, hw: isHW(kind), L: src.L, W: src.W, H: src.H });
     }
     const c = liteCache.get(k), root = new T.Group();
-    const m1 = new T.Mesh(c.bg, liteMat); m1.castShadow = true; m1.receiveShadow = true; root.add(m1);
+    for (const d of c.decals) root.add(new T.Mesh(d.g, d.m));
+    const m1 = new T.Mesh(c.bg, c.hw ? liteMatHW : liteMat); m1.castShadow = true; m1.receiveShadow = true; root.add(m1);
     if (c.gg) root.add(new T.Mesh(c.gg, CARMAT.glass));
     return { root, body: null, wheels: [], L: c.L, W: c.W, H: c.H };
   }
@@ -2448,6 +2515,8 @@
   // ================= Araba kullanma =================
   const VEH_DRIVE = {
     sedan: { max: 24, acc: 9, brake: 20, turn: 1.9, hp: 100, seat: [0.36, 0.1, -0.2, 0.6] },
+    super: { max: 40, acc: 17, brake: 26, turn: 2.2, hp: 90, seat: [0.38, -0.05, -0.3, 0.52] },
+    muscle: { max: 34, acc: 14, brake: 22, turn: 1.8, hp: 120, seat: [0.36, 0.05, -0.3, 0.56] },
     hatch: { max: 22, acc: 10, brake: 20, turn: 2.1, hp: 100, seat: [0.36, 0.1, -0.35, 0.6] },
     taxi: { max: 24, acc: 9, brake: 20, turn: 1.9, hp: 100, seat: [0.36, 0.1, -0.2, 0.6] },
     bus: { max: 15, acc: 5, brake: 12, turn: 1.1, hp: 170, seat: [0.7, 0.75, 4.6, 0.8] },
@@ -3143,7 +3212,7 @@
     }
     for (const v of g.vehicles) {
       const [px, py] = toMap(v.x, v.z); mx.save(); mx.translate(px, py); mx.rotate(-(v.yaw - go.yaw));
-      mx.fillStyle = v.kind === "taxi" ? "#f5c518" : v.kind === "bus" ? "#2a73b8" : "#f4f4f4"; mx.fillRect(-v.W * k / 2 - 1, -v.L * k / 2, v.W * k + 2, v.L * k); mx.restore();
+      mx.fillStyle = isHW(v.kind) ? "#" + (v.color || 0xff2a6d).toString(16).padStart(6, "0") : v.kind === "taxi" ? "#f5c518" : v.kind === "bus" ? "#2a73b8" : "#f4f4f4"; mx.fillRect(-v.W * k / 2 - 1, -v.L * k / 2, v.W * k + 2, v.L * k); mx.restore();
     }
     for (const pk of g.pickups) { const [px, py] = toMap(pk.x, pk.z); mx.fillStyle = pk.type === "simit" ? "#a8662c" : "#d6402b"; mx.beginPath(); mx.arc(px, py, 6, 0, 7); mx.fill(); }
     for (const p of g.people) {
