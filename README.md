@@ -55,6 +55,7 @@ Her hayvan kapı kırabilir, iç mekânlara girebilir ve araba kullanabilir. Kla
 - **Hemzemin geçitler:** caddelerin demiryolunu kestiği yerlerde tren yaklaşınca kırmızı-beyaz bariyerler iner, ışıklar yanıp söner, zil çalar; arabalar bariyerde durur.
 - **Tramvay:** bazı caddelerin ortasında gömülü raylar ve katener telleri vardır; bu caddelerde araba trafiği yoktur. Kırmızı-beyaz körüklü **T1 tramvayları** her blok ortasındaki durakta durur, önüne çıkınca zil çalıp fren yapar. Hareket eden tramvay çarparsa can gider; duran tramvaya toslamak +20 puan.
 - **Metro:** bazı caddelerin üstünde sütunlara oturan yükseltilmiş viyadük vardır. Gümüş-mavi **M2 metro trenleri** üstten geçer ve büyük **M** tabelalı, merdiven kuleli istasyonlarda durur.
+- **Trene binmek:** keçi, aslan ya da deve kuşu tren veya tramvayın yanına gidince (hareket halindeyken bile) **BİN** tuşu çıkar; metroya istasyonda beklerken altından binilir. Hayvan ön vagonun çatısına çıkar ve aracı sen sürersin: joystick ileri hızlanır, geri yavaşlar / geri gider; **FREN**, **KORNA** (tren düdüğü / tramvay zili), **İN**. Binince +25, her 120 m yolculuk +10 puan. Raydaki yayalar ve arabalar savrulur; aynı raydaki başka trene çarpınca durursun. İnince tren kendi seferine devam eder.
 - Mini haritada demiryolu kahverengi, tramvay kırmızı, metro mavi çizgiyle gösterilir.
 
 ## Kapılar ve iç mekânlar
