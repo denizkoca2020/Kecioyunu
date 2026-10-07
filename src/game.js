@@ -1096,6 +1096,7 @@
     return { root, body, legs, neck, head, tail, jaw: null };
   }
 
+  const bodyR = () => 0.55 * A().shadow; // hayvanın gövde yarıçapı
   const ANIMALS = {
     keci: { name: "Keçi", gen: "Keçinin", speed: 1, jump: 1, seat: 1, camUp: 0, shadow: 1, voice: "bleat",
       slots: [null, { id: "jump", label: "ZIPLA" }, { id: "tos", label: "TOS" }] },
@@ -2207,7 +2208,14 @@
         ax += (0 - p.x) / room.W * 0.8; az += (room.D / 2 - p.z) / room.D * 0.8;
         const l = Math.hypot(ax, az) || 1; vx = ax / l; vz = az / l; spd = 3.4; anim = "run";
       } else if (Math.hypot(p.x - p.home.x, p.z - p.home.z) > 0.6 && d > 7) { vx = (p.home.x - p.x); vz = (p.home.z - p.z); const l = Math.hypot(vx, vz); vx /= l; vz /= l; spd = 1.3; anim = "walk"; }
-      if (spd) { p.x += vx * spd * dt; p.z += vz * spd * dt; roomPush(room, p, 0.35); }
+      if (spd) { p.x += vx * spd * dt; p.z += vz * spd * dt; }
+      for (const q of room.people) {
+        if (q === p || q.flying) continue;
+        const qx = p.x - q.x, qz = p.z - q.z, qd = Math.hypot(qx, qz);
+        if (qd < 0.7 && qd > 0.001) { const k2 = (0.7 - qd) / qd; p.x += qx * k2; p.z += qz * k2; }
+      }
+      { const sx = p.x - go.x, sz = p.z - go.z, sd = Math.hypot(sx, sz) || 0.01, minD = bodyR() + 0.35; if (sd < minD && Math.abs(go.y - (p.y || 0)) < 1.4) { p.x = go.x + sx / sd * minD; p.z = go.z + sz / sd * minD; } }
+      roomPush(room, p, 0.35);
       const look = spd ? Math.atan2(vx, vz) : Math.atan2(dx, dz);
       p.yaw += angDiff(p.yaw, look) * damp(8, dt);
       play(p.inst, anim, 1);
@@ -2217,7 +2225,7 @@
       if (d < 1.8 && p.hitCd <= 0 && go.y < 1.4) {
         const front = (fx * -dx + fz * -dz) / d;
         if (go.dashT > 0 && front > 0.1) knockInside(room, p, go, fx, fz, animalId === "aslan" ? pick(dashWords()) : null);
-        else if (d < 0.9 && p.kind === "bekci") { damage("Bekçi yakaladı!"); p.hitCd = 1; go.speed = -4; }
+        else if (d < bodyR() + 0.5 && p.kind === "bekci") { damage("Bekçi yakaladı!"); p.hitCd = 1; go.speed = -4; p.x -= dx / d * 1.0; p.z -= dz / d * 1.0; roomPush(room, p, 0.35); }
         if (mode !== "play") return;
       }
     }
@@ -2502,8 +2510,8 @@
         for (const sx of [-1, 1]) { b.add(GEO.cyl8, RMAT.pole, ox + sx * 5.2, 3.1, z, 0.1, 6.2, 0.1); cols.push({ x: ox + sx * 5.2, z, r: 0.22, solid: true }); }
         b.add(GEO.box, RMAT.pole, ox, 6.1, z, 10.4, 0.08, 0.08);
       }
-      // durak (her iki kaldırımda): sundurma ve T1 tabelası
-      for (const sx of [1, -1]) {
+      // durak (her iki kaldırımda): sundurma ve T1 tabelası — demiryolu hücresinde yok
+      if (type !== "rail") for (const sx of [1, -1]) {
         const x = ox + sx * (ROAD + 1.6), z = oz + CELL / 2;
         b.add(GEO.box, MAT.darkMetal, x, 2.55, z, 1.6, 0.1, 5);
         b.add(GEO.box, MAT.glass, x + sx * 0.75, 1.3, z, 0.04, 2.2, 4.6, 0, 0, 0, false);
@@ -2659,12 +2667,47 @@
     }
     return t;
   }
+  // --- katı çarpışma: yönlü kutular (SAT)
+  function vbox(v, fwd = 0, m = 0) { const y = v.yaw + (v.yawOff || 0); return { x: v.x + Math.sin(y) * fwd, z: v.z + Math.cos(y) * fwd, y, hl: v.L / 2 + m, hw: v.W / 2 + m }; }
+  function boxHit(a, b) {
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const proj = (o, ax, az) => Math.abs(Math.sin(o.y) * ax + Math.cos(o.y) * az) * o.hl + Math.abs(Math.cos(o.y) * ax - Math.sin(o.y) * az) * o.hw;
+    for (const yy of [a.y, b.y]) for (const [ax, az] of [[Math.sin(yy), Math.cos(yy)], [Math.cos(yy), -Math.sin(yy)]]) {
+      if (Math.abs(dx * ax + dz * az) > proj(a, ax, az) + proj(b, ax, az)) return false;
+    }
+    return true;
+  }
+  const nearV = (a, b, pad = 4) => Math.abs(a.x - b.x) + Math.abs(a.z - b.z) < a.L / 2 + b.L / 2 + a.W + b.W + pad;
+  // araç o'yu, v'nin kutusundan yana doğru dışarı iter (tren çarpınca araba savrulur)
+  function shoveVehicle(o, v) {
+    if (o.state === "player") return;
+    const vy = v.yaw + (v.yawOff || 0), lx = Math.cos(vy), lz = -Math.sin(vy);
+    const sgn = Math.sign((o.x - v.x) * lx + (o.z - v.z) * lz) || 1;
+    if (!o.free) { o.free = true; o.axis = "free"; o.yaw += o.yawOff || 0; o.yawOff = 0; o.latOff = 0; o.cruise = 0; if (o.state !== "wreck") o.state = "abandoned"; }
+    for (let k = 0; k < 40 && boxHit(vbox(v, 0, 0.2), vbox(o)); k++) { o.x += lx * sgn * 0.25; o.z += lz * sgn * 0.25; }
+    o.speed = 0; o.root.position.set(o.x, groundY(o.x, o.z) + (o.hop || 0), o.z);
+    if (o.spot) o.spot.gone = true;
+  }
+  // nokta (yaya, hayvan) araç kutusunun içindeyse en kısa yoldan dışarı
+  function pushFromVehicles(p, rad) {
+    for (const v of g.vehicles) {
+      if (Math.abs(p.x - v.x) + Math.abs(p.z - v.z) > v.L / 2 + v.W + 2) continue;
+      if ((p.y || 0) > (v.yBase || 0) + v.H) continue;
+      const vy = v.yaw + (v.yawOff || 0), fx = Math.sin(vy), fz = Math.cos(vy), lx = Math.cos(vy), lz = -Math.sin(vy);
+      const rx = p.x - v.x, rz = p.z - v.z, la = rx * fx + rz * fz, ll = rx * lx + rz * lz;
+      const pl = v.W / 2 + rad - Math.abs(ll), pa = v.L / 2 + rad - Math.abs(la);
+      if (pl <= 0 || pa <= 0) continue;
+      if (pl < pa || v.rail) { const sg = Math.sign(ll) || 1; p.x += lx * pl * sg; p.z += lz * pl * sg; }
+      else { const sg = Math.sign(la) || 1; p.x += fx * pa * sg; p.z += fz * pa * sg; }
+    }
+  }
   // tramvay ve metro durakları: blok ortası
   function stopTarget(v, target, stopEvery, dwellTime) {
     const s = v.along, dir = v.dir;
     const next = (Math.floor((s - CELL / 2) / (CELL * stopEvery)) + (dir > 0 ? 1 : 0)) * CELL * stopEvery + CELL / 2;
     const ahead = (next - s) * dir, idx = Math.round(next);
     if (v.dwell > 0) return 0;
+    if (isRailRow(Math.floor(next / CELL))) return target; // hemzemin geçitte durak yok
     if (ahead > 0 && ahead < 22 && v.served !== idx) {
       if (ahead < 0.7) { v.dwell = dwellTime; v.served = idx; return 0; }
       return Math.min(target, Math.max(1.2, ahead * 0.6));
@@ -2940,11 +2983,22 @@
         }
       }
       for (const o of g.vehicles) {
-        if (o.rail || o.state === "wreck" || o.hitCd > 0 || Math.hypot(o.x - v.x, o.z - v.z) > (o.L + v.L) / 2 + 1) continue;
-        const [la, ll] = carLocal(v, o.x, o.z);
-        const ext = Math.abs(Math.cos(o.yaw - v.yaw)) * o.W + Math.abs(Math.sin(o.yaw - v.yaw)) * o.L;
-        if (Math.abs(la) < v.L / 2 + ext / 2 && Math.abs(ll) < (v.W + ext) / 2) { knockVehicle(o); o.hitCd = 1.2; v.speed *= 0.9; }
+        if (o === v || !nearV(v, o, 4)) continue;
+        if (o.rail) { // dik geçen tren / tramvay: içinden geçme, dur
+          if (Math.abs(o.lat - v.lat) < 0.5 && o.axis === v.axis) continue; // aynı raydakiler yukarıda
+          const sg = Math.sign(v.speed) || 1;
+          if (boxHit(vbox(v, sg * 0.4), vbox(o))) {
+            if (Math.abs(v.speed) > 4) { sfx.crash(); g.shake = 0.6; popText(go.x, go.y + 2.5, go.z, o.rail === "tram" ? "Tramvaya çarptın!" : "Trene çarptın!", "#2b1d14", 28); }
+            v.speed = 0;
+            for (let k = 0; k < 30 && boxHit(vbox(v), vbox(o)); k++) { v.along -= sg * v.dir * 0.1; v.x = v.axis === "z" ? v.lat : v.along; v.z = v.axis === "z" ? v.along : v.lat; }
+          }
+          continue;
+        }
+        if (!boxHit(vbox(v, 0, 0.1), vbox(o))) continue;
+        if (o.state !== "wreck" && o.hitCd <= 0 && Math.abs(v.speed) > 2) { knockVehicle(o); o.hitCd = 1.2; v.speed *= 0.9; }
+        shoveVehicle(o, v);
       }
+      v.root.position.set(v.x, v.yBase, v.z);
     }
     const cz = railCab(v);
     go.x = v.x + fx * cz; go.z = v.z + fz * cz; go.y = v.yBase + v.H; go.yaw = v.yaw; go.speed = Math.abs(v.speed); go.vy = 0; go.dashT = 0; go.stun = 0;
@@ -3313,6 +3367,17 @@
       play(p.inst, p.inst.actions[anim] ? anim : "walk", anim === "run" && p.mode === "flee" ? 1.15 : ts > 2 ? 1 : ts);
       if (vx || vz) p.yaw += angDiff(p.yaw, Math.atan2(vx, vz)) * damp(10, dt);
       p.root.rotation.y = p.yaw + MODEL_YAW[p.model];
+      // katı gövde: araçlar, diğer yayalar ve keçi
+      pushFromVehicles(p, 0.35);
+      for (const q of g.people) {
+        if (q === p || q.flying) continue;
+        const qx = p.x - q.x, qz = p.z - q.z, qd = Math.hypot(qx, qz);
+        if (qd < 0.7 && qd > 0.001) { const k2 = (0.7 - qd) / qd; p.x += qx * k2; p.z += qz * k2; }
+      }
+      if (!g.driving && Math.abs(go.y - groundY(p.x, p.z)) < 1.4) {
+        const sx = p.x - go.x, sz = p.z - go.z, sd = Math.hypot(sx, sz) || 0.01, minD = bodyR() + 0.35;
+        if (sd < minD) { p.x = go.x + sx / sd * minD; p.z = go.z + sz / sd * minD; }
+      }
       p.y = groundY(p.x, p.z);
       p.root.position.set(p.x, p.y, p.z);
       p.root.visible = !(p.flash > 0 && Math.floor(p.flash * 20) % 2 === 0);
@@ -3320,8 +3385,8 @@
       if (d < 1.9 && Math.abs(go.y - p.y) < 1.4 && p.hitCd <= 0) {
         const front = (fx * -dx + fz * -dz) / d;
         if (go.dashT > 0 && front > 0.1) knockPerson(p, go, false);
-        else if (d < 1.0) {
-          if (p.kind === "bekci" && !g.driving) { damage("Bekçi yakaladı!"); p.hitCd = 1; go.speed = -4; }
+        else if (d < bodyR() + 0.5) {
+          if (p.kind === "bekci" && !g.driving) { damage("Bekçi yakaladı!"); p.hitCd = 1; go.speed = -4; const pd = Math.hypot(dx, dz) || 1; p.x -= dx / pd * 1.2; p.z -= dz / pd * 1.2; }
           else { p.x -= (dx / d) * 0.5; p.z -= (dz / d) * 0.5; }
         }
         if (mode !== "play") return;
@@ -3350,7 +3415,23 @@
         } else if (ga > 0 && ga < 70 + v.L / 2 && gl < 2.5 && v.honked <= 0) { sfx.trainHorn(); v.honked = 5; popText(go.x, go.y + 2.6, go.z, "Raydan çekil!", "#d6402b", 28); }
         v.honked = Math.max(0, (v.honked || 0) - dt);
         const blk = railBlock(v, g.vehicles); if (blk !== null) target = Math.min(target, blk);
-        v.speed += (target - v.speed) * damp(target < v.speed ? 2.5 : 0.6, dt);
+        if (v.rail === "tram") { // hemzemin geçit: bariyer inikse bekle
+          const row = Math.floor((v.z + v.dir * (v.L / 2 + 16)) / CELL);
+          if (isRailRow(row)) { const d = (row * CELL + CELL / 2 - v.z) * v.dir - v.L / 2 - 5.5; if (d > -1 && d < 30 && crossingDown(v.lat, row)) target = Math.min(target, Math.max(0, d * 0.8)); }
+        }
+        // katı engel: önündeki araca asla girmez
+        let hard = false;
+        const look = Math.max(1, v.speed * v.speed / 12 + 1);
+        for (const o of g.vehicles) {
+          if (o === v || !nearV(v, o, look + 4)) continue;
+          const oa = (o.x - v.x) * ax + (o.z - v.z) * az;
+          if (!o.rail && v.rail === "tren") { if (boxHit(vbox(v, 0, 0.1), vbox(o))) { shoveVehicle(o, v); g.shake = Math.max(g.shake, 0.2); sfx.crash(); } continue; } // tren arabayı savurur
+          if (!o.rail && v.rail === "tram" && (o.free || o.state === "wreck") && boxHit(vbox(v, 0, 0.1), vbox(o))) { shoveVehicle(o, v); continue; }
+          if (oa <= -v.L / 2) continue;
+          if (boxHit(vbox(v, look), vbox(o))) { target = 0; hard = true; if (boxHit(vbox(v, 0.3), vbox(o))) { v.speed = 0; } }
+        }
+        v.speed += (target - v.speed) * damp(target < v.speed ? (hard ? 6 : 2.5) : 0.6, dt);
+        v.speed = Math.max(0, v.speed);
         v.along += v.speed * dt * v.dir;
         v.x = v.axis === "z" ? v.lat : v.along; v.z = v.axis === "z" ? v.along : v.lat;
         v.root.position.set(v.x, v.yBase, v.z);
@@ -3403,6 +3484,25 @@
         }
         v.waitT = v.speed < 0.5 ? (v.waitT || 0) + dt : 0;
         v.honked = Math.max(0, (v.honked || 0) - dt);
+        // katı engel: hiçbir aracın içine girmez
+        v.blockedBy = null; v.backT = Math.max(0, (v.backT || 0) - dt);
+        const look = Math.max(0.6, v.speed * 0.4);
+        for (const o of g.vehicles) {
+          if (o === v || !nearV(v, o, look + 3)) continue;
+          const oa = (o.x - v.x) * ax + (o.z - v.z) * az;
+          if (v.backT > 0) { if (oa < 0 && boxHit(vbox(v, -1), vbox(o))) v.backT = 0; continue; }
+          if (oa <= -v.L / 2 + 0.2 && !o.rail) continue; // arkadaki araç
+          if (boxHit(vbox(v, look), vbox(o))) {
+            target = 0; v.blockedBy = o;
+            if (boxHit(vbox(v, 0.05), vbox(o))) { v.speed = Math.min(v.speed, 0); v.along -= v.dir * 0.15; }
+          }
+        }
+        if (v.backT > 0) target = -2;
+        // kavşakta karşılıklı kilitlenme: x yönündeki araç biraz geri çekilir
+        const bo = v.blockedBy;
+        if (bo && v.waitT > 4 && !bo.rail && bo.blockedBy === v && v.axis === "x") { v.backT = 1.2; v.waitT = 0; }
+        // terk edilmiş araç yolu kapattıysa ve keçi uzaktaysa trafik aracı kaybolur
+        if (bo && bo.free && v.waitT > 10 && Math.hypot(v.x - go.x, v.z - go.z) > 45) { scene.remove(v.root); g.vehicles.splice(i, 1); continue; }
         v.speed += (target - v.speed) * damp(target < v.speed ? 4 : 1.2, dt);
         v.latOff += (0 - v.latOff) * damp(1.5, dt); v.yawOff += (0 - v.yawOff) * damp(2, dt);
         v.hop = 0;
@@ -3459,6 +3559,10 @@
         if (a.state === "walk") { spd = 1.3; vx = Math.sin(a.wyaw); vz = Math.cos(a.wyaw); anim = "walk"; }
       }
       if (spd) { a.x += vx * spd * dt; a.z += vz * spd * dt; if (pushOut(a, 0.3)) a.wyaw = rand(0, 6.28); a.yaw += angDiff(a.yaw, Math.atan2(vx, vz)) * damp(10, dt); }
+      pushFromVehicles(a, 0.4);
+      if (!g.driving) { const sx = a.x - go.x, sz = a.z - go.z, sd = Math.hypot(sx, sz) || 0.01, minD = bodyR() + 0.4; if (sd < minD && go.y < 1.2) { a.x = go.x + sx / sd * minD; a.z = go.z + sz / sd * minD; } }
+      for (const p of g.people) { if (p.flying) continue; const sx = a.x - p.x, sz = a.z - p.z, sd = Math.hypot(sx, sz); if (sd < 0.75 && sd > 0.001) { a.x = p.x + sx / sd * 0.75; a.z = p.z + sz / sd * 0.75; } }
+      pushOut(a, 0.3);
       play(a.inst, anim, ts);
       a.y = groundY(a.x, a.z);
       a.root.position.set(a.x, a.y, a.z); a.root.rotation.y = a.yaw + MODEL_YAW.fox;
@@ -3774,7 +3878,7 @@
     loadingText.textContent = "Şehir kuruluyor…";
     setTimeout(() => {
       toMenu();
-      if (location.hash === "#test") window.__k = { get g() { return g; }, addRailVehicle, cellType, action, useAnimal, get goat() { return goat; }, toggleCar, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
+      if (location.hash === "#test") window.__k = { get g() { return g; }, vbox, boxHit, bodyR, addRailVehicle, cellType, action, useAnimal, get goat() { return goat; }, toggleCar, chunks, iscene, buildInterior, SHOPS, step(n) { for (let i = 0; i < n && mode === "play"; i++) { update(1 / 30); animateGoat(1 / 30); updateCamera(1 / 30, false); updatePops(1 / 30); } }, keys, headbutt, jump, spawnPerson, spawnVehicle, knockVehicle, MODEL_YAW, camera, scene, renderer, start, protos };
       requestAnimationFrame((t) => { last = t; frame(t); });
       if (failedModels.length) setTimeout(() => toast("Bazı modeller yüklenemedi, yedekleri kullanılıyor: " + failedModels.join(", ")), 600);
     }, 30);
