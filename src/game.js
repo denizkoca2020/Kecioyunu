@@ -2611,6 +2611,17 @@
   // --- raylı araçların doğması
   function spawnRail(go) {
     const ccx = Math.floor(go.x / CELL), ccz = Math.floor(go.z / CELL);
+    // zincirleme kaza: ilk 4 tren çarpsın, ardından 2 tren gelip dursun
+    if (g.piles) for (let i = g.piles.length - 1; i >= 0; i--) {
+      const q = g.piles[i];
+      if (Math.abs(q.lat - go.z) > 260 || Math.abs(q.rear - go.x) > 700 || q.spawned >= 4 + 2) { if (q.pending <= 0 && (q.spawned >= 4 + 2 || Math.abs(q.rear - go.x) > 700)) g.piles.splice(i, 1); continue; }
+      q.spawnT -= 0.4; if (q.spawnT > 0) continue;
+      const at = q.rear - q.dir * rand(100, 125);
+      if (Math.abs(at - go.x) > 600) continue;
+      if (g.vehicles.some((v) => v.rail === "tren" && !v.derail && Math.abs(v.lat - q.lat) < 0.5 && Math.abs(v.along - at) < 130)) { q.spawnT = 1; continue; }
+      addRailVehicle(Math.random() < 0.65 ? "banliyo" : "yuk", "x", q.dir, q.lat, at, "tren");
+      q.spawned++; q.spawnT = q.spawned < 4 ? rand(5, 7) : rand(7, 9);
+    }
     // trenler: yakın demiryolu sıraları
     for (let dz = -3; dz <= 3; dz++) {
       const row = ccz + dz; if (!isRailRow(row)) continue;
@@ -2704,19 +2715,38 @@
     if (v.derail) return;
     const rider = g.driving === v;
     if (rider) { exitRail(); const go = g.goat; go.vy = 9; go.speed = 3; go.stun = 0.4; }
+    // zincirleme kaza kaydı: aynı rayda arkadan gelen ilk 4 tren duramaz
+    let pile = null, chainN = 0;
+    if (v.rail === "tren") {
+      g.piles = g.piles || [];
+      pile = v.noBrake || g.piles.find((q) => Math.abs(q.lat - v.lat) < 0.5 && Math.abs(q.rear - v.along) < 400);
+      if (pile) { if (v.noBrake) { pile.count++; pile.pending--; chainN = pile.count; side = pile.count % 2 ? -pile.side : pile.side; } }
+      else if (Math.hypot(v.x - g.goat.x, v.z - g.goat.z) < 220 && !g.piles.some((q) => Math.abs(q.lat - v.lat) < 12)) { pile = { lat: v.lat, axis: v.axis, dir: v.dir, side: side || 1, rear: 0, count: 0, pending: 0, spawned: 0, spawnT: 2.5 }; g.piles.push(pile); }
+      if (pile) pile.rear = v.along - v.dir * v.L / 2;
+    }
+    v.noBrake = null;
     v.state = "derail"; v.derail = { t: 0, side: side || (Math.random() < 0.5 ? 1 : -1), ang: 0, slide: 0, puff: 0 };
     v.dwell = 0; v.cruise = 0;
     const go = g.goat, near = Math.hypot(v.x - go.x, v.z - go.z) < 80;
     sfx.crash(); setTimeout(() => sfx.crash(), 220); setTimeout(() => sfx.thud(), 500);
     if (near) g.shake = Math.max(g.shake, 0.9);
     const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw), fl = v.L / 2 - 3;
-    addCombo(80, v.x + fx * fl, v.yBase + v.H + 1.5, v.z + fz * fl, v.rail === "tram" ? "Tramvay devrildi!" : "Tren devrildi!", 0);
-    if (rider || near) toast(v.rail === "tram" ? "Tramvay raydan çıktı ve devrildi!" : "Tren raydan çıktı ve devrildi!");
+    addCombo(80, v.x + fx * fl, v.yBase + v.H + 1.5, v.z + fz * fl, chainN ? `Zincirleme kaza! ${chainN + 1}. tren` : v.rail === "tram" ? "Tramvay devrildi!" : "Tren devrildi!", 0);
+    if (rider || near) toast(chainN ? `Zincirleme kaza! ${chainN + 1}. tren de devrildi!` : v.rail === "tram" ? "Tramvay raydan çıktı ve devrildi!" : "Tren raydan çıktı ve devrildi!");
   }
   function updateDerail(v, dt) {
     const d = v.derail; d.t += dt;
     v.speed = Math.max(0, v.speed - 7 * dt);
     v.along += v.speed * dt * v.dir;
+    for (const o of g.vehicles) {
+      if (o === v || !o.rail || Math.abs(o.lat - v.lat) > 0.5) continue;
+      const ahead = (o.along - v.along) * v.dir, gap = (o.L + v.L) / 2 + 0.4;
+      if (ahead > 0 && ahead < gap) { // öndeki enkaza gömüldü: durur, öndekini biraz iter
+        if (v.speed > 3 && o.derail) { o.speed = Math.max(o.speed, v.speed * 0.25); o.derail.slide += 0.3; }
+        if (v.speed > 3) { sfx.crash(); g.shake = Math.max(g.shake, Math.hypot(v.x - g.goat.x, v.z - g.goat.z) < 80 ? 0.6 : 0.1); }
+        v.speed = 0; v.along = o.along - v.dir * gap;
+      }
+    }
     d.ang = Math.min(1.42, d.ang + dt * (0.5 + d.ang * 2.4)); // önce yavaş, sonra hızla yan yatar
     d.slide += v.speed * dt * 0.05;
     v.yawOff = d.side * 0.1 * Math.min(1, d.t * 1.5);
@@ -3460,7 +3490,7 @@
         if (v.derail) { // raydan çıkmış, yan yatmış
           updateDerail(v, dt);
           if (mode !== "play") return;
-          if ((v.derail.t > 45 && Math.hypot(v.x - go.x, v.z - go.z) > 70) || Math.abs(v.along - (v.axis === "z" ? go.z : go.x)) > 340 || Math.abs(v.lat - (v.axis === "z" ? go.x : go.z)) > 260) { scene.remove(v.root); g.vehicles.splice(i, 1); }
+          if ((v.derail.t > 90 && Math.hypot(v.x - go.x, v.z - go.z) > 70) || Math.abs(v.along - (v.axis === "z" ? go.z : go.x)) > 700 || Math.abs(v.lat - (v.axis === "z" ? go.x : go.z)) > 260) { scene.remove(v.root); g.vehicles.splice(i, 1); }
           continue;
         }
         v.dwell = Math.max(0, (v.dwell || 0) - dt);
@@ -3475,7 +3505,11 @@
           for (const o of g.vehicles) { if (o === v || o.rail === "tren") continue; const [oa, ol] = rel(o.x, o.z); const ext = Math.abs(Math.cos(o.yaw - v.yaw)) * o.W + Math.abs(Math.sin(o.yaw - v.yaw)) * o.L; if (oa > 0 && oa < v.L / 2 + 8 && ol < (ext + v.W) / 2 + 0.3) target = Math.min(target, Math.max(0, oa - v.L / 2 - 2)); }
         } else if (ga > 0 && ga < 70 + v.L / 2 && gl < 2.5 && v.honked <= 0) { sfx.trainHorn(); v.honked = 5; popText(go.x, go.y + 2.6, go.z, "Raydan çekil!", "#d6402b", 28); }
         v.honked = Math.max(0, (v.honked || 0) - dt);
-        const blk = railBlock(v, g.vehicles); if (blk !== null) target = Math.min(target, blk);
+        if (v.rail === "tren" && !v.pileChecked && g.piles) { // zincirleme kazaya katılacak mı?
+          const pl = g.piles.find((q) => Math.abs(q.lat - v.lat) < 0.5 && (q.rear - v.along) * v.dir > 0 && (q.rear - v.along) * v.dir < 400);
+          if (pl) { v.pileChecked = true; if (pl.count + pl.pending < 4) { v.noBrake = pl; pl.pending++; } }
+        }
+        const blk = v.noBrake ? null : railBlock(v, g.vehicles); if (blk !== null) target = Math.min(target, blk);
         if (v.rail === "tram") { // hemzemin geçit: bariyer inikse bekle
           const row = Math.floor((v.z + v.dir * (v.L / 2 + 16)) / CELL);
           if (isRailRow(row)) { const d = (row * CELL + CELL / 2 - v.z) * v.dir - v.L / 2 - 5.5; if (d > -1 && d < 30 && crossingDown(v.lat, row)) target = Math.min(target, Math.max(0, d * 0.8)); }
@@ -3496,6 +3530,15 @@
           }
           if (!o.rail && v.rail === "tram" && (o.free || o.state === "wreck") && boxHit(vbox(v, 0, 0.1), vbox(o))) { shoveVehicle(o, v); continue; }
           if (oa <= -v.L / 2) continue;
+          if (v.noBrake && o.rail && Math.abs(o.lat - v.lat) < 0.5) { // fren yok: enkaza çarp ve devril
+            const ahead = (o.along - v.along) * v.dir;
+            if (ahead > 0 && ahead < (o.L + v.L) / 2 + 0.3) {
+              v.along = o.along - v.dir * ((o.L + v.L) / 2 + 0.3);
+              if (o.derail) { o.speed = Math.max(o.speed, v.speed * 0.3); o.derail.slide += 0.4; }
+              derailTrain(v); break;
+            }
+            continue;
+          }
           if (boxHit(vbox(v, look), vbox(o))) { target = 0; hard = true; if (boxHit(vbox(v, 0.3), vbox(o))) { v.speed = 0; } }
         }
         if (v.derail) continue; // bu karede devrildi
@@ -3516,7 +3559,7 @@
             if (mode !== "play") return;
           }
         }
-        if (Math.abs(v.along - (v.axis === "z" ? go.z : go.x)) > 340 || Math.abs(v.lat - (v.axis === "z" ? go.x : go.z)) > 260) { scene.remove(v.root); g.vehicles.splice(i, 1); }
+        if (Math.abs(v.along - (v.axis === "z" ? go.z : go.x)) > (v.noBrake || v.pileChecked ? 700 : 340) || Math.abs(v.lat - (v.axis === "z" ? go.x : go.z)) > 260) { scene.remove(v.root); g.vehicles.splice(i, 1); }
         continue;
       }
       if (v.mixer) v.mixer.update(dt * (v.speed / 10));
