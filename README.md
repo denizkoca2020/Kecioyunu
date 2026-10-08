@@ -6,7 +6,7 @@ iPad için 3B sonsuz koşu oyunu. Keçi şehre iniyor: caddelerde istediğin yö
 
 | iPad | Klavye | Hareket |
 |---|---|---|
-| Sol yarıda sanal joystick | Ok tuşları / WASD | Sağa sola dön, ileri it: hızlan, geri çek: yavaşla |
+| Sol yarıda sanal joystick | Ok tuşları / WASD | Bırakınca hayvan olduğu yerde bekler; ileri it: yürü/koş, geri çek: geri geri git, sağa sola: dön |
 | **TOS** tuşu (ya da sağ yarıya dokun) | `J` / `X` / `Enter` | Başını eğip ileri atıl |
 | **ZIPLA** tuşu | `Boşluk` | Zıpla (havada bir kez daha: çift zıplama) |
 | ❚❚ | `Esc` / `P` | Duraklat |

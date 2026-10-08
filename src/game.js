@@ -3296,7 +3296,9 @@
     // --- keçi hareketi
     go.yaw -= input.jx * (go.dashT > 0 ? 1.2 : 2.5) * dt;
     const base = 6.5 + Math.min(g.t * 0.035, 4.5);
-    let sp = base * A().speed * (input.jy >= 0 ? 1 + 0.55 * input.jy : 1 + 0.7 * input.jy);
+    // joystick bırakılınca olduğu yerde bekler: ileri itince yürür/koşar, geri çekince geri geri gider
+    const jy = Math.abs(input.jy) < 0.08 ? 0 : input.jy;
+    let sp = jy > 0 ? base * A().speed * (0.45 + 1.1 * jy) : jy < 0 ? base * 0.5 * jy : 0;
     if (go.slow > 0) sp *= 0.55;
     if (go.dashT > 0) sp += 6 + 10 * (go.dashT / DASH);
     if (go.stun > 0) sp = -3 * (go.stun / 0.45);
