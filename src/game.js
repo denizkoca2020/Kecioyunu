@@ -2679,14 +2679,65 @@
   }
   const nearV = (a, b, pad = 4) => Math.abs(a.x - b.x) + Math.abs(a.z - b.z) < a.L / 2 + b.L / 2 + a.W + b.W + pad;
   // araç o'yu, v'nin kutusundan yana doğru dışarı iter (tren çarpınca araba savrulur)
-  function shoveVehicle(o, v) {
-    if (o.state === "player") return;
+  function shoveVehicle(o, v, hard) {
     const vy = v.yaw + (v.yawOff || 0), lx = Math.cos(vy), lz = -Math.sin(vy);
     const sgn = Math.sign((o.x - v.x) * lx + (o.z - v.z) * lz) || 1;
+    if (o.state === "player") { // keçinin kullandığı araba: kenara fırlar, hasar alır
+      for (let k = 0; k < 40 && boxHit(vbox(v, 0, 0.2), vbox(o)); k++) { o.x += lx * sgn * 0.25; o.z += lz * sgn * 0.25; }
+      o.speed *= 0.2; if (hard) carCrash(o, Math.abs(v.speed) * 1.5);
+      return;
+    }
     if (!o.free) { o.free = true; o.axis = "free"; o.yaw += o.yawOff || 0; o.yawOff = 0; o.latOff = 0; o.cruise = 0; if (o.state !== "wreck") o.state = "abandoned"; }
     for (let k = 0; k < 40 && boxHit(vbox(v, 0, 0.2), vbox(o)); k++) { o.x += lx * sgn * 0.25; o.z += lz * sgn * 0.25; }
     o.speed = 0; o.root.position.set(o.x, groundY(o.x, o.z) + (o.hop || 0), o.z);
     if (o.spot) o.spot.gone = true;
+    if (hard) { // hızlı tren: araba havaya uçar, döne döne savrulur
+      const fw = Math.abs(v.speed) * 0.55 * (Math.sign(v.speed) || 1);
+      o.state = "wreck"; o.wreckT = 4; o.hop = o.hop || 0; o.hopV = rand(6, 9);
+      o.fling = { x: lx * sgn * rand(8, 13) + Math.sin(vy) * fw, z: lz * sgn * rand(8, 13) + Math.cos(vy) * fw, spin: rand(-7, 7) };
+      sfx.crash(); setTimeout(() => sfx.alarm(), 300); burst(o.x, 1.2, o.z, 16, "glass"); burst(o.x, 0.6, o.z, 10, "dust");
+      g.carHits++;
+    }
+  }
+  // --- tren raydan çıkar ve yan yatar
+  function derailTrain(v, side) {
+    if (v.derail) return;
+    const rider = g.driving === v;
+    if (rider) { exitRail(); const go = g.goat; go.vy = 9; go.speed = 3; go.stun = 0.4; }
+    v.state = "derail"; v.derail = { t: 0, side: side || (Math.random() < 0.5 ? 1 : -1), ang: 0, slide: 0, puff: 0 };
+    v.dwell = 0; v.cruise = 0;
+    const go = g.goat, near = Math.hypot(v.x - go.x, v.z - go.z) < 80;
+    sfx.crash(); setTimeout(() => sfx.crash(), 220); setTimeout(() => sfx.thud(), 500);
+    if (near) g.shake = Math.max(g.shake, 0.9);
+    const fx = Math.sin(v.yaw), fz = Math.cos(v.yaw), fl = v.L / 2 - 3;
+    addCombo(80, v.x + fx * fl, v.yBase + v.H + 1.5, v.z + fz * fl, v.rail === "tram" ? "Tramvay devrildi!" : "Tren devrildi!", 0);
+    if (rider || near) toast(v.rail === "tram" ? "Tramvay raydan çıktı ve devrildi!" : "Tren raydan çıktı ve devrildi!");
+  }
+  function updateDerail(v, dt) {
+    const d = v.derail; d.t += dt;
+    v.speed = Math.max(0, v.speed - 7 * dt);
+    v.along += v.speed * dt * v.dir;
+    d.ang = Math.min(1.42, d.ang + dt * (0.5 + d.ang * 2.4)); // önce yavaş, sonra hızla yan yatar
+    d.slide += v.speed * dt * 0.05;
+    v.yawOff = d.side * 0.1 * Math.min(1, d.t * 1.5);
+    const yaw = v.yaw + v.yawOff, lx = Math.cos(yaw), lz = -Math.sin(yaw), s = d.side, W = v.W;
+    const latOff = s * (W / 2 * (1 - Math.cos(d.ang)) + d.slide);
+    const bx = v.axis === "z" ? v.lat : v.along, bz = v.axis === "z" ? v.along : v.lat;
+    v.x = bx + lx * latOff; v.z = bz + lz * latOff;
+    v.root.position.set(v.x, v.yBase * (1 - d.ang / 1.42) + W / 2 * Math.sin(d.ang) * 0.92, v.z);
+    v.root.rotation.set(0, yaw, -s * d.ang);
+    // kıvılcım ve toz
+    if (d.t < 3.5) { d.puff -= dt; if (d.puff <= 0) { d.puff = 0.12; const k = rand(-0.5, 0.5), fx = Math.sin(yaw), fz = Math.cos(yaw); burst(v.x + fx * v.L * k, 0.6, v.z + fz * v.L * k, 3, "dust"); if (v.speed > 2) burst(v.x + fx * v.L * k, 0.3, v.z + fz * v.L * k, 2, "star"); } }
+    // keçi devrilen trenin içinden geçmez
+    const go = g.goat;
+    if (!g.driving) {
+      const c = Math.cos(yaw), s2 = Math.sin(yaw), rx = go.x - v.x, rz = go.z - v.z, la = rx * s2 + rz * c, ll = rx * c - rz * s2;
+      const hw = v.W / 2 + (v.H - v.W / 2) * Math.sin(d.ang) * 0.5 + 0.45;
+      if (Math.abs(la) < v.L / 2 + 0.45 && Math.abs(ll) < hw && go.y < v.H) {
+        if (v.speed > 3 && g.inv <= 0) { damage("Devrilen tren çarptı!"); go.stun = 0.5; }
+        const sgn = Math.sign(ll) || 1, push = hw - Math.abs(ll); go.x += c * push * sgn; go.z -= s2 * push * sgn;
+      }
+    }
   }
   // nokta (yaya, hayvan) araç kutusunun içindeyse en kısa yoldan dışarı
   function pushFromVehicles(p, rad) {
@@ -2891,7 +2942,7 @@
   function nearCarCheck(go) {
     let best = null, bd = 99;
     if (!g.inside) for (const v of g.vehicles) {
-      if (v.dead || v.state === "player") continue;
+      if (v.dead || v.state === "player" || v.derail) continue;
       const [la, ll] = carLocal(v, go.x, go.z);
       const dist = Math.hypot(Math.max(0, Math.abs(la) - v.L / 2), Math.max(0, Math.abs(ll) - v.W / 2));
       const reach = v.rail ? 2.6 : Math.abs(v.speed) > 3 ? 2.2 : 1.6; // giden araca da atlanabilir
@@ -2995,8 +3046,10 @@
           continue;
         }
         if (!boxHit(vbox(v, 0, 0.1), vbox(o))) continue;
-        if (o.state !== "wreck" && o.hitCd <= 0 && Math.abs(v.speed) > 2) { knockVehicle(o); o.hitCd = 1.2; v.speed *= 0.9; }
-        shoveVehicle(o, v);
+        const fast = v.rail === "tren" && Math.abs(v.speed) > 6;
+        if (o.state !== "wreck" && o.hitCd <= 0 && Math.abs(v.speed) > 2) { knockVehicle(o); o.hitCd = 1.2; if (!fast) v.speed *= 0.9; }
+        shoveVehicle(o, v, fast);
+        if (fast) { const lx = Math.cos(v.yaw), lz = -Math.sin(v.yaw); derailTrain(v, -(Math.sign((o.x - v.x) * lx + (o.z - v.z) * lz) || 1)); return; }
       }
       v.root.position.set(v.x, v.yBase, v.z);
     }
@@ -3402,6 +3455,12 @@
       v.hitCd = Math.max(0, v.hitCd - dt);
       if (v.state === "player") continue; // keçi kullanıyor
       if (v.rail) { // tren ve tramvay: raylarında gider
+        if (v.derail) { // raydan çıkmış, yan yatmış
+          updateDerail(v, dt);
+          if (mode !== "play") return;
+          if ((v.derail.t > 45 && Math.hypot(v.x - go.x, v.z - go.z) > 70) || Math.abs(v.along - (v.axis === "z" ? go.z : go.x)) > 340 || Math.abs(v.lat - (v.axis === "z" ? go.x : go.z)) > 260) { scene.remove(v.root); g.vehicles.splice(i, 1); }
+          continue;
+        }
         v.dwell = Math.max(0, (v.dwell || 0) - dt);
         const ax = v.axis === "x" ? v.dir : 0, az = v.axis === "z" ? v.dir : 0;
         const rel = (px, pz) => [(px - v.x) * ax + (pz - v.z) * az, Math.abs((px - v.x) * az - (pz - v.z) * ax)];
@@ -3425,11 +3484,19 @@
         for (const o of g.vehicles) {
           if (o === v || !nearV(v, o, look + 4)) continue;
           const oa = (o.x - v.x) * ax + (o.z - v.z) * az;
-          if (!o.rail && v.rail === "tren") { if (boxHit(vbox(v, 0, 0.1), vbox(o))) { shoveVehicle(o, v); g.shake = Math.max(g.shake, 0.2); sfx.crash(); } continue; } // tren arabayı savurur
+          if (!o.rail && v.rail === "tren") { // tren duramaz: arabaya çarpar, araba uçar, tren devrilir
+            if (boxHit(vbox(v, 0, 0.1), vbox(o))) {
+              const fast = v.speed > 6;
+              shoveVehicle(o, v, fast);
+              if (fast) { const lx = Math.cos(v.yaw), lz = -Math.sin(v.yaw); derailTrain(v, -(Math.sign((o.x - v.x) * lx + (o.z - v.z) * lz) || 1)); break; }
+            }
+            continue;
+          }
           if (!o.rail && v.rail === "tram" && (o.free || o.state === "wreck") && boxHit(vbox(v, 0, 0.1), vbox(o))) { shoveVehicle(o, v); continue; }
           if (oa <= -v.L / 2) continue;
           if (boxHit(vbox(v, look), vbox(o))) { target = 0; hard = true; if (boxHit(vbox(v, 0.3), vbox(o))) { v.speed = 0; } }
         }
+        if (v.derail) continue; // bu karede devrildi
         v.speed += (target - v.speed) * damp(target < v.speed ? (hard ? 6 : 2.5) : 0.6, dt);
         v.speed = Math.max(0, v.speed);
         v.along += v.speed * dt * v.dir;
@@ -3453,6 +3520,12 @@
       if (v.mixer) v.mixer.update(dt * (v.speed / 10));
       const ax = v.axis === "x" ? v.dir : 0, az = v.axis === "z" ? v.dir : 0; // yön vektörü
       if (v.free) { // keçinin bıraktığı araç: trafik yapay zekâsı yok
+        if (v.fling) { // trenin savurduğu araba
+          const f = v.fling; v.x += f.x * dt; v.z += f.z * dt; v.yaw += f.spin * dt;
+          const k = 1 - Math.min(1, dt * (v.hop > 0.05 ? 0.4 : 2.5)); f.x *= k; f.z *= k; f.spin *= k;
+          const pt = { x: v.x, z: v.z }; if (pushOut(pt, v.W / 2, false)) { v.x = pt.x; v.z = pt.z; f.x *= -0.3; f.z *= -0.3; sfx.thud(); }
+          if (Math.hypot(f.x, f.z) < 0.3) v.fling = null;
+        }
         if (v.state === "wreck") { v.wreckT -= dt; v.hopV -= GRAV * dt; v.hop = Math.max(0, v.hop + v.hopV * dt); if (v.wreckT <= 0) { v.state = "abandoned"; v.yaw += v.yawOff; v.yawOff = 0; } }
         else v.hop = 0;
         if (Math.abs(v.speed) > 0.05) {
