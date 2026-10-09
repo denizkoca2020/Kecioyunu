@@ -403,7 +403,36 @@
   const trunkGeo = new T.CylinderGeometry(0.1, 0.19, 1, 8); trunkGeo.translate(0, 0.5, 0);
   const branchGeo = new T.CylinderGeometry(0.04, 0.08, 1, 6); branchGeo.translate(0, 0.5, 0);
   const _o = new T.Object3D();
+  let treeSink = null; // loadChunk bu parçadaki ağaçları toplar (elmalar için)
+  // ağaç altı kırmızı elması: gövde + sap + yaprak tek geometri (köşe renkli)
+  const appleGeo = (() => {
+    const col = (geo, hex) => { const c = new T.Color(hex), n = geo.attributes.position.count, a = new Float32Array(n * 3); for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; } geo.setAttribute("color", new T.BufferAttribute(a, 3)); return geo; };
+    const body = new T.SphereGeometry(0.2, 14, 10); body.scale(1, 0.92, 1);
+    const stem = new T.CylinderGeometry(0.014, 0.018, 0.12, 5); stem.translate(0, 0.22, 0);
+    const leaf = new T.SphereGeometry(0.06, 6, 4); leaf.scale(1, 0.22, 0.55); leaf.rotateZ(0.5); leaf.translate(0.06, 0.25, 0);
+    const parts = [col(body, 0xc4161c), col(stem, 0x5a3a1e), col(leaf, 0x4f8f2a)].map((g2) => g2.toNonIndexed());
+    return T.BufferGeometryUtils.mergeBufferGeometries(parts, false);
+  })();
+  const appleMat = new T.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.28, clearcoat: 0.7, clearcoatRoughness: 0.2, emissive: 0x2a0000 });
+  const _am = new T.Object3D();
+  function addApples(group, trees, r) {
+    if (!trees.length) return { apples: [], mesh: null };
+    const mesh = new T.InstancedMesh(appleGeo, appleMat, trees.length);
+    mesh.frustumCulled = false; mesh.castShadow = true;
+    const apples = trees.map(([tx, tz], i) => {
+      const a = r() * Math.PI * 2, d = 0.7 + r() * 0.3, x = tx + Math.cos(a) * d, z = tz + Math.sin(a) * d;
+      _am.position.set(x, CURB + 0.18, z); _am.rotation.set(r() * 0.4 - 0.2, r() * 6.28, r() * 0.4 - 0.2); _am.scale.setScalar(1); _am.updateMatrix();
+      mesh.setMatrixAt(i, _am.matrix);
+      return { x, z, i, eaten: false, t: 0, m: _am.matrix.clone() };
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    group.add(mesh);
+    return { apples, mesh };
+  }
+  const _zero = new T.Matrix4().makeScale(0, 0, 0);
+  function setApple(c, ap, on) { ap.eaten = !on; c.appleMesh.setMatrixAt(ap.i, on ? ap.m : _zero); c.appleMesh.instanceMatrix.needsUpdate = true; }
   function addTree(b, cols, x, z, r, big) {
+    if (treeSink) treeSink.push([x, z]);
     // kaldırım ağaçları yüksekten budanmış: taç kameranın üstünde kalır
     const h = big ? 3.4 + r() * 1.2 : 4.0 + r() * 0.8;
     const scale = big ? 1.25 + r() * 0.4 : 0.85 + r() * 0.2;
@@ -521,6 +550,7 @@
     const r = rng((cx * 73856093) ^ (cz * 19349663) ^ 7654321);
     const group = new T.Group(), b = new Batch(), cols = [], doors = [];
     const ox = cx * CELL, oz = cz * CELL, type = cellType(cx, cz);
+    treeSink = [];
     const bx0 = ox + ROAD, bx1 = ox + CELL - ROAD, bz0 = oz + ROAD, bz1 = oz + CELL - ROAD, bw = bx1 - bx0;
     const ix0 = bx0 + WALK, ix1 = bx1 - WALK, iz0 = bz0 + WALK, iz1 = bz1 - WALK;
 
@@ -661,14 +691,15 @@
       spawns.pigeons.push([cm + 5, pz + 4], [cm - 4, pz - 5], [cm + 3, pz - 6]);
     }
     const crossing = addRailInfra(b, cols, r, cx, cz, type, group);
+    const ap = addApples(group, treeSink, r); treeSink = null;
     b.build(group);
     for (const d of doors) group.add(d.group);
     scene.add(group);
-    chunks.set(key(cx, cz), { group, cols, cx, cz, type, spawns, pigeonsDone: false, doors, parked, crossing });
+    chunks.set(key(cx, cz), { group, cols, cx, cz, type, spawns, pigeonsDone: false, doors, parked, crossing, apples: ap.apples, appleMesh: ap.mesh });
   }
   function unloadChunk(k, c) {
     scene.remove(c.group);
-    c.group.traverse((o) => { if (o.isMesh) o.geometry.dispose(); });
+    c.group.traverse((o) => { if (o.isMesh && o.geometry !== appleGeo) o.geometry.dispose(); });
     chunks.delete(k);
   }
   let chunkQueue = [];
@@ -2273,7 +2304,7 @@
       people: [], vehicles: [], animals: [], pickups: [], birds: [], fx: [], waves: [], metros: [], spawnT: 0, honkT: 0,
     };
     camYaw = st.yaw;
-    for (const c of chunks.values()) { c.pigeonsDone = false; for (const sp of c.parked) { sp.veh = null; sp.gone = false; } }
+    for (const c of chunks.values()) { c.pigeonsDone = false; for (const a of c.apples) if (a.eaten) setApple(c, a, true); for (const sp of c.parked) { sp.veh = null; sp.gone = false; } }
     for (let i = 0; i < 10; i++) spawnPerson(true);
     for (let i = 0; i < 6; i++) spawnVehicle(true);
     spawnAnimal(true);
@@ -2611,16 +2642,16 @@
   // --- raylı araçların doğması
   function spawnRail(go) {
     const ccx = Math.floor(go.x / CELL), ccz = Math.floor(go.z / CELL);
-    // zincirleme kaza: ilk 4 tren çarpsın, ardından 2 tren gelip dursun
+    // zincirleme kaza: ilk PILE_MAX tren çarpsın, ardından 2 tren gelip dursun
     if (g.piles) for (let i = g.piles.length - 1; i >= 0; i--) {
       const q = g.piles[i];
-      if (Math.abs(q.lat - go.z) > 260 || Math.abs(q.rear - go.x) > 700 || q.spawned >= 4 + 2) { if (q.pending <= 0 && (q.spawned >= 4 + 2 || Math.abs(q.rear - go.x) > 700)) g.piles.splice(i, 1); continue; }
+      if (Math.abs(q.lat - go.z) > 260 || Math.abs(q.rear - go.x) > 700 || q.spawned >= PILE_MAX + 2) { if (q.pending <= 0 && (q.spawned >= PILE_MAX + 2 || Math.abs(q.rear - go.x) > 700)) g.piles.splice(i, 1); continue; }
       q.spawnT -= 0.4; if (q.spawnT > 0) continue;
       const at = q.rear - q.dir * rand(100, 125);
       if (Math.abs(at - go.x) > 600) continue;
       if (g.vehicles.some((v) => v.rail === "tren" && !v.derail && Math.abs(v.lat - q.lat) < 0.5 && Math.abs(v.along - at) < 130)) { q.spawnT = 1; continue; }
       addRailVehicle(Math.random() < 0.65 ? "banliyo" : "yuk", "x", q.dir, q.lat, at, "tren");
-      q.spawned++; q.spawnT = q.spawned < 4 ? rand(5, 7) : rand(7, 9);
+      q.spawned++; q.spawnT = q.spawned < PILE_MAX ? rand(5, 7) : rand(7, 9);
     }
     // trenler: yakın demiryolu sıraları
     for (let dz = -3; dz <= 3; dz++) {
@@ -2715,7 +2746,7 @@
     if (v.derail) return;
     const rider = g.driving === v;
     if (rider) { exitRail(); const go = g.goat; go.vy = 9; go.speed = 3; go.stun = 0.4; }
-    // zincirleme kaza kaydı: aynı rayda arkadan gelen ilk 4 tren duramaz
+    // zincirleme kaza kaydı: aynı rayda arkadan gelen ilk PILE_MAX tren duramaz
     let pile = null, chainN = 0;
     if (v.rail === "tren") {
       g.piles = g.piles || [];
@@ -2997,6 +3028,7 @@
     ui.carPad.hidden = !on;
     ui.carChip.hidden = !on;
   }
+  const PILE_MAX = 3; // zincirleme kazada arkadan çarpan tren sayısı
   const RAIL_DRV = { tren: { max: 28, acc: 4, brake: 9, name: "Tren" }, tram: { max: 15, acc: 3, brake: 7, name: "Tramvay" }, metro: { max: 24, acc: 3.5, brake: 8, name: "Metro" } };
   const railCab = (v) => v.L / 2 - (v.rail === "tram" ? 2.6 : 4); // hayvan ön vagonun çatısında durur
   function boardRail(v) {
@@ -3217,6 +3249,12 @@
     g.dist += Math.abs(v.speed) * dt;
   }
 
+  const MAX_LIVES = 5;
+  function eatApple(x, z) {
+    burst(x, CURB + 0.3, z, 8, "star");
+    if (g.lives < MAX_LIVES) { g.lives++; sfx.heart(); popText(x, 2, z, "Kırmızı elma! +1 can", "#d6402b", 32); }
+    else { g.score += 5; sfx.yum(); popText(x, 2, z, "Can dolu! +5", "#8e5b2a", 28); }
+  }
   function damage(reason) {
     if (g.inv > 0 || mode !== "play") return;
     g.lives--; g.inv = 1.6; g.combo = 0; g.shake = 0.5; sfx.hurt(); hurtFlash();
@@ -3377,10 +3415,21 @@
       const d = Math.hypot(go.x - pk.x, go.z - pk.z);
       if (d < 1.4 && go.y < 2) {
         if (pk.type === "simit") { g.energy = Math.min(100, g.energy + 35); g.score += 5; sfx.yum(); popText(pk.x, 2, pk.z, "Simit! +5", "#8e5b2a", 30); }
-        else { g.lives = Math.min(3, g.lives + 1); sfx.heart(); popText(pk.x, 2, pk.z, "+1 can", "#d6402b", 32); }
+        else eatApple(pk.x, pk.z);
         scene.remove(pk.root); g.pickups.splice(i, 1); continue;
       }
       if (d > 110) { scene.remove(pk.root); g.pickups.splice(i, 1); }
+    }
+    // --- ağaç altındaki kırmızı elmalar: can verir, 60 sn sonra yeniden düşer
+    if (!g.inside) {
+      const ccx = Math.floor(go.x / CELL), ccz = Math.floor(go.z / CELL);
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        const c = chunks.get(key(ccx + dx, ccz + dz)); if (!c || !c.appleMesh) continue;
+        for (const a of c.apples) {
+          if (a.eaten) { a.t -= dt; if (a.t <= 0) setApple(c, a, true); continue; }
+          if (go.y < 2 && Math.abs(go.x - a.x) < 1.3 && Math.abs(go.z - a.z) < 1.3 && Math.hypot(go.x - a.x, go.z - a.z) < 1.3) { setApple(c, a, false); a.t = 60; eatApple(a.x, a.z); }
+        }
+      }
     }
 
 
@@ -3507,7 +3556,7 @@
         v.honked = Math.max(0, (v.honked || 0) - dt);
         if (v.rail === "tren" && !v.pileChecked && g.piles) { // zincirleme kazaya katılacak mı?
           const pl = g.piles.find((q) => Math.abs(q.lat - v.lat) < 0.5 && (q.rear - v.along) * v.dir > 0 && (q.rear - v.along) * v.dir < 400);
-          if (pl) { v.pileChecked = true; if (pl.count + pl.pending < 4) { v.noBrake = pl; pl.pending++; } }
+          if (pl) { v.pileChecked = true; if (pl.count + pl.pending < PILE_MAX) { v.noBrake = pl; pl.pending++; } }
         }
         const blk = v.noBrake ? null : railBlock(v, g.vehicles); if (blk !== null) target = Math.min(target, blk);
         if (v.rail === "tram") { // hemzemin geçit: bariyer inikse bekle
